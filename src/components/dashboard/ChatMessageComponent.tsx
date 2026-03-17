@@ -22,6 +22,10 @@ function TypingDots() {
   );
 }
 
+function formatTimestamp(date: Date): string {
+  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
 export function ChatMessageComponent({ message }: ChatMessageProps) {
   const { setSelectedArtifact, setArtifactPanelOpen } = useAppStore();
 
@@ -46,6 +50,9 @@ export function ChatMessageComponent({ message }: ChatMessageProps) {
         <div className="chat-bubble-user px-4 py-3">
           <p className="text-sm text-text-primary leading-relaxed">
             {message.text}
+          </p>
+          <p className="text-[10px] text-text-muted mt-1.5 text-right font-mono">
+            {formatTimestamp(message.timestamp)}
           </p>
         </div>
       </div>
@@ -84,6 +91,12 @@ export function ChatMessageComponent({ message }: ChatMessageProps) {
               <MarkdownRenderer content={message.text} />
             )}
           </div>
+
+          {!message.isStreaming && (
+            <p className="text-[10px] text-text-muted mt-1.5 font-mono px-1">
+              {formatTimestamp(message.timestamp)}
+            </p>
+          )}
 
           {message.actionCard && (
             <ActionCard

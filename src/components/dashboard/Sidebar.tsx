@@ -75,8 +75,8 @@ export function Sidebar() {
         sidebarExpanded ? "w-56" : "w-12"
       )}
     >
-      {/* Logo */}
-      <div className="h-12 flex items-center px-3 border-b border-border-primary shrink-0">
+      {/* Logo — links to home */}
+      <Link href="/" className="h-12 flex items-center px-3 border-b border-border-primary shrink-0 hover:bg-bg-primary transition-colors">
         <span className="font-serif text-base text-text-primary shrink-0">P</span>
         <span
           className={cn(
@@ -86,7 +86,7 @@ export function Sidebar() {
         >
           ropeller
         </span>
-      </div>
+      </Link>
 
       {/* New conversation button */}
       {sidebarExpanded && (
