@@ -10,6 +10,8 @@ const terminalLines = [
   { agent: "Compliance", color: "text-agent-compliance", text: "FTA eligibility: USMCA (Mexico), CETA (Canada). Duty savings ~$42K/yr.", time: "09:02:45" },
   { agent: "Outreach", color: "text-agent-outreach", text: "Drafting outreach for top 50 buyers. Language: EN, DE, ES.", time: "09:04:00" },
   { agent: "Finance", color: "text-agent-finance", text: "Recommended terms: LC at sight for new buyers, open account for USMCA.", time: "09:05:00" },
+  { agent: "Compliance", color: "text-agent-compliance", text: "Watchlist alert: \"Acme GmbH\" added to BIS Entity List (03/15/2026). Flagged.", time: "09:06:00" },
+  { agent: "Compliance", color: "text-agent-compliance", text: "Federal Register: New BIS rule on semiconductor export controls published today.", time: "09:06:30" },
 ];
 
 export function TerminalMockup() {

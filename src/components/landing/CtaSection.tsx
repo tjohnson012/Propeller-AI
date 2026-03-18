@@ -22,8 +22,9 @@ export function CtaSection() {
             Ready to go global?
           </h2>
           <p className="text-text-secondary text-lg max-w-md mb-10 leading-relaxed">
-            Screen entities against live OFAC data, search real trade flows,
-            and get AI-powered export guidance.
+            Screen entities against live OFAC data, monitor your trade partners
+            24/7, browse upcoming trade events, and get AI-powered export
+            guidance.
           </p>
           <div className="flex items-center gap-6">
             <Link href="/dashboard">

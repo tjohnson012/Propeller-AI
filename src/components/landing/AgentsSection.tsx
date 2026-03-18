@@ -5,14 +5,14 @@ import { FadeUp } from "@/components/ui/FadeUp";
 
 const agentDetails: Record<string, { caps: string[]; stat: string; statLabel: string }> = {
   market: {
-    caps: ["UN Comtrade API", "HS Code Database", "Trade Flow Analysis"],
+    caps: ["UN Comtrade API", "Census Bureau Data", "Trade Events Calendar"],
     stat: "847",
     statLabel: "buyers found last scan",
   },
   compliance: {
-    caps: ["Live OFAC SDN", "BIS Entity List", "FTA Eligibility"],
-    stat: "12K+",
-    statLabel: "entities in screening DB",
+    caps: ["Watchlist Monitoring", "Daily Auto-Screening", "FTA Tariff Lookup"],
+    stat: "24/7",
+    statLabel: "automated watchlist monitoring",
   },
   outreach: {
     caps: ["Cultural Adaptation", "Multi-language", "Follow-up Sequences"],

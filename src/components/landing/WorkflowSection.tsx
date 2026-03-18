@@ -15,7 +15,7 @@ export function WorkflowSection() {
             From catalog to first export
           </h2>
           <p className="text-text-secondary text-base max-w-lg mb-14 leading-relaxed">
-            Five steps. Four agents. One workspace.
+            Six steps. Four agents. One workspace.
           </p>
         </FadeUp>
 

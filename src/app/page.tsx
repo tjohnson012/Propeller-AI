@@ -3,6 +3,7 @@ import { Hero } from "@/components/landing/Hero";
 import { TerminalMockup } from "@/components/landing/TerminalMockup";
 import { ProblemSection } from "@/components/landing/ProblemSection";
 import { AgentsSection } from "@/components/landing/AgentsSection";
+import { MonitoringSection } from "@/components/landing/MonitoringSection";
 import { DataSourcesSection } from "@/components/landing/DataSourcesSection";
 import { WorkspacePreview } from "@/components/landing/WorkspacePreview";
 import { StatBar } from "@/components/landing/StatBar";
@@ -21,6 +22,7 @@ export default function HomePage() {
         <StatBar />
         <ProblemSection />
         <AgentsSection />
+        <MonitoringSection />
         <DataSourcesSection />
         <WorkspacePreview />
         <WorkflowSection />

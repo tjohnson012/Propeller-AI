@@ -17,6 +17,7 @@ import type { ChatMessage, AgentStatus, ArtifactData } from "./store";
 /* ── Nav Links ── */
 export const navLinks = [
   { label: "Agents", href: "#agents" },
+  { label: "Monitoring", href: "#monitoring" },
   { label: "Workflow", href: "#workflow" },
   { label: "Data Sources", href: "#data-sources" },
 ];
@@ -38,6 +39,10 @@ export const dataSources = [
   { name: "ITAR Debarred", description: "State Department debarred arms traffickers", category: "Compliance" },
   { name: "UN Comtrade", description: "Global trade flow data across 190+ countries", category: "Market Data" },
   { name: "USITC HTS", description: "Harmonized Tariff Schedule with duty rates", category: "Classification" },
+  { name: "US Census Bureau", description: "Monthly US export/import data at HS-6 level with state-level breakdowns", category: "Market Data" },
+  { name: "Federal Register", description: "Real-time BIS, OFAC, CBP, DDTC regulatory updates and rule changes", category: "Compliance" },
+  { name: "Trade.gov FTA Tariff Rates", description: "Preferential duty rates under 20 US Free Trade Agreements", category: "Classification" },
+  { name: "World Bank WITS", description: "MFN applied tariff rates for 150+ non-FTA countries", category: "Classification" },
 ];
 
 /* ── Agent Definitions ── */
@@ -157,11 +162,16 @@ export const workflowSteps = [
   },
   {
     step: 4,
+    title: "Ongoing Monitoring",
+    description: "Every trade partner joins your watchlist. Propeller screens them daily and alerts you when screening lists change.",
+  },
+  {
+    step: 5,
     title: "Outreach & Negotiation",
     description: "AI-drafted, culturally-adapted outreach lands in buyer inboxes. Follow-ups are automated until engagement.",
   },
   {
-    step: 5,
+    step: 6,
     title: "Secure Payment & Ship",
     description: "The Finance agent structures payment terms, arranges trade finance, and manages FX risk so you get paid safely.",
   },

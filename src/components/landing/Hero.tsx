@@ -36,9 +36,8 @@ export function Hero() {
 
         <FadeUp delay={0.15}>
           <p className="text-lg md:text-xl text-text-secondary max-w-lg leading-relaxed mb-12 tracking-[-0.01em]">
-            Four AI agents handle compliance screening, market research, buyer
-            outreach, and export finance. Connected to real government
-            databases, not just an LLM.
+            Four AI agents plus continuous compliance monitoring. Connected to
+            11 government databases, not just an LLM.
           </p>
         </FadeUp>
 
@@ -73,11 +72,10 @@ export function Hero() {
                     "EU Consolidated List",
                     "Trade.gov APIs",
                     "UN Security Council",
-                    "OFAC SDN List",
-                    "UN Comtrade",
-                    "USITC HTS",
-                    "BIS Entity List",
-                    "EU Consolidated List",
+                    "Census Bureau",
+                    "Federal Register",
+                    "FTA Tariff Rates",
+                    "WITS Tariff Data",
                   ].map((source, i) => (
                     <span
                       key={`${setIdx}-${i}`}

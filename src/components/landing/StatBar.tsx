@@ -49,10 +49,10 @@ function AnimatedNumber({ value, suffix = "" }: { value: number; suffix?: string
 }
 
 const parsedStats = [
-  { value: 12000, suffix: "+", label: "OFAC SDN entries screened in real-time" },
-  { value: 190, suffix: "+", label: "Countries with UN Comtrade trade data" },
-  { value: 5200, suffix: "+", label: "HS codes in our tariff database" },
-  { value: 30, suffix: "s", label: "Full compliance screening per entity", prefix: "<" },
+  { value: 25000, suffix: "+", label: "Entities across 13 federal screening lists" },
+  { value: 190, suffix: "+", label: "Countries with trade data" },
+  { value: 11, suffix: "", label: "Government databases connected" },
+  { value: 24, suffix: "/7", label: "Automated compliance monitoring", isStatic: true },
 ];
 
 export function StatBar() {
@@ -64,12 +64,13 @@ export function StatBar() {
             <FadeUp key={stat.label} delay={i * 0.08}>
               <div>
                 <div className="flex items-baseline gap-0.5">
-                  {stat.prefix && (
-                    <span className="font-mono text-4xl md:text-5xl font-bold tracking-[-0.04em] text-text-primary">
-                      {stat.prefix}
-                    </span>
+                  {stat.isStatic ? (
+                    <div className="font-mono text-4xl md:text-5xl font-bold tracking-[-0.04em] text-text-primary tabular-nums">
+                      {stat.value}{stat.suffix}
+                    </div>
+                  ) : (
+                    <AnimatedNumber value={stat.value} suffix={stat.suffix} />
                   )}
-                  <AnimatedNumber value={stat.value} suffix={stat.suffix} />
                 </div>
                 <p className="text-text-tertiary text-sm leading-snug mt-2">{stat.label}</p>
               </div>
