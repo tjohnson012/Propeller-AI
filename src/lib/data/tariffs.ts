@@ -121,9 +121,15 @@ async function fetchFTATariffRate(
 
   try {
     const hs6 = hsCode.slice(0, 6);
-    const url = `https://api.trade.gov/v1/tariff_rates/search?api_key=${apiKey}&sources=${countryCode}&hs6=${hs6}&size=5`;
+    const url = `https://api.trade.gov/gateway/v1/tariff_rates/search?sources=${countryCode}&hs6=${hs6}&size=5`;
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        "Ocp-Apim-Subscription-Key": apiKey,
+        Accept: "application/json",
+      },
+    });
     if (!res.ok) return [];
 
     const data = await res.json();
