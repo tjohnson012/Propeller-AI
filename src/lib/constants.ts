@@ -12,7 +12,9 @@ import {
   Calendar,
   type LucideIcon,
 } from "lucide-react";
+import { MarketIcon, ComplianceIcon, OutreachIcon, FinanceIcon } from "@/components/icons/AgentIcons";
 import type { ChatMessage, AgentStatus, ArtifactData } from "./store";
+import type { ComponentType, SVGProps } from "react";
 
 /* ── Nav Links ── */
 export const navLinks = [
@@ -48,12 +50,14 @@ export const dataSources = [
 /* ── Agent Definitions ── */
 export type AgentId = "market" | "compliance" | "outreach" | "finance";
 
+export type AgentIcon = LucideIcon | ComponentType<SVGProps<SVGSVGElement>>;
+
 export interface AgentDef {
   id: AgentId;
   name: string;
   title: string;
   description: string;
-  icon: LucideIcon;
+  icon: AgentIcon;
   capabilities: string[];
 }
 
@@ -64,7 +68,7 @@ export const agents: AgentDef[] = [
     title: "Find Your Buyers",
     description:
       "Scans global trade data, identifies high-potential markets, and surfaces qualified buyers matched to your product specifications.",
-    icon: Compass,
+    icon: MarketIcon,
     capabilities: ["HS Code Mapping", "Market Sizing", "Buyer Matching", "Trend Analysis"],
   },
   {
@@ -73,7 +77,7 @@ export const agents: AgentDef[] = [
     title: "Navigate Regulations",
     description:
       "Monitors tariff schedules, sanctions lists, and FTA eligibility in real-time. Auto-generates export documentation.",
-    icon: Scale,
+    icon: ComplianceIcon,
     capabilities: ["Tariff Lookup", "Sanctions Screening", "FTA Analysis", "Document Gen"],
   },
   {
@@ -82,7 +86,7 @@ export const agents: AgentDef[] = [
     title: "Close the Deal",
     description:
       "Drafts culturally-adapted outreach, manages follow-ups, and handles multilingual communication with prospective buyers.",
-    icon: Handshake,
+    icon: OutreachIcon,
     capabilities: ["Email Drafting", "Follow-up Chains", "Translation", "CRM Sync"],
   },
   {
@@ -91,7 +95,7 @@ export const agents: AgentDef[] = [
     title: "Get Paid Safely",
     description:
       "Structures payment terms, finds export financing, assesses buyer credit risk, and manages currency exposure.",
-    icon: Receipt,
+    icon: FinanceIcon,
     capabilities: ["LC Structuring", "Credit Scoring", "FX Hedging", "Grant Matching"],
   },
 ];
