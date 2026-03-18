@@ -93,3 +93,66 @@ $$ language plpgsql;
 create trigger conversations_updated_at
   before update on conversations
   for each row execute function update_updated_at();
+
+-- ────────────────────────────────────────
+-- Watchlist Entities (compliance monitoring)
+-- ────────────────────────────────────────
+create table if not exists watchlist_entities (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  entity_name text not null,
+  entity_type text not null default 'buyer' check (entity_type in ('buyer', 'supplier', 'intermediary', 'end-user')),
+  country text,
+  hs_codes text[],
+  notes text,
+  status text not null default 'active' check (status in ('active', 'paused', 'archived')),
+  last_screened_at timestamptz,
+  last_result jsonb, -- cached last screening result
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null
+);
+
+alter table watchlist_entities enable row level security;
+create policy "Users manage own watchlist" on watchlist_entities
+  for all using (auth.uid() = user_id);
+
+create trigger watchlist_updated_at
+  before update on watchlist_entities
+  for each row execute function update_updated_at();
+
+-- ────────────────────────────────────────
+-- Monitoring Alerts
+-- ────────────────────────────────────────
+create table if not exists monitoring_alerts (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  watchlist_entity_id uuid references watchlist_entities(id) on delete cascade not null,
+  alert_type text not null check (alert_type in ('match_found', 'match_changed', 'match_removed', 'list_updated')),
+  severity text not null check (severity in ('info', 'warning', 'critical')),
+  title text not null,
+  description text not null,
+  matched_list text,
+  matched_entry jsonb,
+  status text not null default 'unread' check (status in ('unread', 'read', 'acknowledged', 'dismissed')),
+  created_at timestamptz default now() not null
+);
+
+alter table monitoring_alerts enable row level security;
+create policy "Users see own alerts" on monitoring_alerts
+  for all using (auth.uid() = user_id);
+
+create index if not exists idx_alerts_user_status on monitoring_alerts(user_id, status);
+
+-- ────────────────────────────────────────
+-- Monitoring Runs (audit trail)
+-- ────────────────────────────────────────
+create table if not exists monitoring_runs (
+  id uuid primary key default uuid_generate_v4(),
+  run_type text not null default 'scheduled' check (run_type in ('scheduled', 'manual')),
+  started_at timestamptz default now() not null,
+  completed_at timestamptz,
+  entities_checked int default 0,
+  alerts_generated int default 0,
+  status text not null default 'running' check (status in ('running', 'completed', 'failed')),
+  error text
+);

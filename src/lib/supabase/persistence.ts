@@ -219,9 +219,288 @@ export async function getScreenings(): Promise<Array<{
   return JSON.parse(localStorage.getItem("propeller_screenings") || "[]");
 }
 
+/* ── Watchlist Entities ── */
+
+export interface SavedWatchlistEntity {
+  id: string;
+  entity_name: string;
+  entity_type: string;
+  country?: string;
+  hs_codes?: string[];
+  notes?: string;
+  status: string;
+  last_screened_at?: string;
+  last_result?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function saveWatchlistEntity(entity: {
+  entityName: string;
+  entityType: string;
+  country?: string;
+  hsCodes?: string[];
+  notes?: string;
+}): Promise<string | null> {
+  const supabase = createClient();
+
+  if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from("watchlist_entities")
+      .insert({
+        user_id: user.id,
+        entity_name: entity.entityName,
+        entity_type: entity.entityType,
+        country: entity.country || null,
+        hs_codes: entity.hsCodes || null,
+        notes: entity.notes || null,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Failed to save watchlist entity:", error);
+      return null;
+    }
+    return data.id;
+  }
+
+  // localStorage fallback
+  const id = `wl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const entities = getLocalWatchlist();
+  entities.push({
+    id,
+    entity_name: entity.entityName,
+    entity_type: entity.entityType,
+    country: entity.country,
+    hs_codes: entity.hsCodes,
+    notes: entity.notes,
+    status: "active",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+  localStorage.setItem("propeller_watchlist", JSON.stringify(entities));
+  return id;
+}
+
+export async function getWatchlistEntities(): Promise<SavedWatchlistEntity[]> {
+  const supabase = createClient();
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("watchlist_entities")
+      .select("*")
+      .in("status", ["active", "paused"])
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Failed to fetch watchlist:", error);
+      return [];
+    }
+    return data || [];
+  }
+
+  return getLocalWatchlist().filter((e) => e.status !== "archived");
+}
+
+export async function updateWatchlistEntity(
+  id: string,
+  updates: Partial<{ status: string; last_screened_at: string; last_result: Record<string, unknown>; notes: string }>,
+): Promise<void> {
+  const supabase = createClient();
+
+  if (supabase) {
+    await supabase.from("watchlist_entities").update(updates).eq("id", id);
+    return;
+  }
+
+  const entities = getLocalWatchlist();
+  const idx = entities.findIndex((e) => e.id === id);
+  if (idx >= 0) {
+    entities[idx] = { ...entities[idx], ...updates, updated_at: new Date().toISOString() };
+    localStorage.setItem("propeller_watchlist", JSON.stringify(entities));
+  }
+}
+
+export async function deleteWatchlistEntity(id: string): Promise<void> {
+  const supabase = createClient();
+
+  if (supabase) {
+    await supabase.from("watchlist_entities").delete().eq("id", id);
+    return;
+  }
+
+  const entities = getLocalWatchlist().filter((e) => e.id !== id);
+  localStorage.setItem("propeller_watchlist", JSON.stringify(entities));
+}
+
+/* ── Monitoring Alerts ── */
+
+export interface SavedAlert {
+  id: string;
+  watchlist_entity_id: string;
+  alert_type: string;
+  severity: string;
+  title: string;
+  description: string;
+  matched_list?: string;
+  matched_entry?: Record<string, unknown>;
+  status: string;
+  created_at: string;
+}
+
+export async function saveAlert(alert: {
+  watchlistEntityId: string;
+  alertType: string;
+  severity: string;
+  title: string;
+  description: string;
+  matchedList?: string;
+  matchedEntry?: Record<string, unknown>;
+}): Promise<string | null> {
+  const supabase = createClient();
+
+  if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from("monitoring_alerts")
+      .insert({
+        user_id: user.id,
+        watchlist_entity_id: alert.watchlistEntityId,
+        alert_type: alert.alertType,
+        severity: alert.severity,
+        title: alert.title,
+        description: alert.description,
+        matched_list: alert.matchedList || null,
+        matched_entry: alert.matchedEntry || null,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Failed to save alert:", error);
+      return null;
+    }
+    return data.id;
+  }
+
+  // localStorage fallback
+  const id = `alert-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const alerts = getLocalAlerts();
+  alerts.push({
+    id,
+    watchlist_entity_id: alert.watchlistEntityId,
+    alert_type: alert.alertType,
+    severity: alert.severity,
+    title: alert.title,
+    description: alert.description,
+    matched_list: alert.matchedList,
+    matched_entry: alert.matchedEntry,
+    status: "unread",
+    created_at: new Date().toISOString(),
+  });
+  localStorage.setItem("propeller_alerts", JSON.stringify(alerts));
+  return id;
+}
+
+export async function getAlerts(status?: string): Promise<SavedAlert[]> {
+  const supabase = createClient();
+
+  if (supabase) {
+    let query = supabase
+      .from("monitoring_alerts")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (status) {
+      query = query.eq("status", status);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error("Failed to fetch alerts:", error);
+      return [];
+    }
+    return data || [];
+  }
+
+  const alerts = getLocalAlerts();
+  return status ? alerts.filter((a) => a.status === status) : alerts;
+}
+
+export async function updateAlertStatus(id: string, status: string): Promise<void> {
+  const supabase = createClient();
+
+  if (supabase) {
+    await supabase.from("monitoring_alerts").update({ status }).eq("id", id);
+    return;
+  }
+
+  const alerts = getLocalAlerts();
+  const idx = alerts.findIndex((a) => a.id === id);
+  if (idx >= 0) {
+    alerts[idx].status = status;
+    localStorage.setItem("propeller_alerts", JSON.stringify(alerts));
+  }
+}
+
+export async function markAllAlertsRead(): Promise<void> {
+  const supabase = createClient();
+
+  if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase
+      .from("monitoring_alerts")
+      .update({ status: "read" })
+      .eq("user_id", user.id)
+      .eq("status", "unread");
+    return;
+  }
+
+  const alerts = getLocalAlerts();
+  for (const a of alerts) {
+    if (a.status === "unread") a.status = "read";
+  }
+  localStorage.setItem("propeller_alerts", JSON.stringify(alerts));
+}
+
+export async function getUnreadAlertCount(): Promise<number> {
+  const supabase = createClient();
+
+  if (supabase) {
+    const { count, error } = await supabase
+      .from("monitoring_alerts")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "unread");
+
+    if (error) return 0;
+    return count ?? 0;
+  }
+
+  return getLocalAlerts().filter((a) => a.status === "unread").length;
+}
+
 /* ── Local storage helpers ── */
 
 function getLocalConversations(): SavedConversation[] {
   if (typeof window === "undefined") return [];
   return JSON.parse(localStorage.getItem("propeller_conversations") || "[]");
+}
+
+function getLocalWatchlist(): SavedWatchlistEntity[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem("propeller_watchlist") || "[]");
+}
+
+function getLocalAlerts(): SavedAlert[] {
+  if (typeof window === "undefined") return [];
+  return JSON.parse(localStorage.getItem("propeller_alerts") || "[]");
 }

@@ -8,6 +8,8 @@ import {
   Send,
   Landmark,
   Settings,
+  Shield,
+  Calendar,
   type LucideIcon,
 } from "lucide-react";
 import type { ChatMessage, AgentStatus, ArtifactData } from "./store";
@@ -129,6 +131,8 @@ export const sidebarLinks: SidebarLink[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Market Research", href: "/dashboard/market-research", icon: Compass, agentId: "market" },
   { label: "Compliance", href: "/dashboard/compliance", icon: Scale, agentId: "compliance" },
+  { label: "Monitoring", href: "/dashboard/monitoring", icon: Shield, agentId: "compliance" },
+  { label: "Trade Events", href: "/dashboard/trade-events", icon: Calendar },
   { label: "Outreach", href: "/dashboard/outreach", icon: Handshake, agentId: "outreach" },
   { label: "Finance", href: "/dashboard/finance", icon: Receipt, agentId: "finance" },
   { label: "Integrations", href: "/dashboard/settings", icon: Settings },

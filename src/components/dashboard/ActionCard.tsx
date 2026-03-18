@@ -5,7 +5,7 @@ import { agentColorMap, type AgentId } from "@/lib/constants";
 import type { ActionCardData } from "@/lib/store";
 import { useAppStore } from "@/lib/store";
 import { sendChatStreaming } from "@/lib/chat-stream";
-import { Check, X, Eye } from "lucide-react";
+import { Check, X, Eye, Shield } from "lucide-react";
 import { useState } from "react";
 
 interface ActionCardProps {
@@ -144,6 +144,33 @@ export function ActionCard({ messageId, data, agentId }: ActionCardProps) {
             Dismiss
           </button>
         </div>
+      )}
+
+      {isPending && data.type === "watchlist-add" && (
+        <button
+          onClick={async () => {
+            try {
+              await fetch("/api/monitoring", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "add_entity",
+                  entityName: data.metadata?.entity || data.title,
+                  entityType: data.metadata?.type || "buyer",
+                  country: data.metadata?.country,
+                }),
+              });
+              handleAction("approved");
+            } catch {
+              handleAction("approved");
+            }
+          }}
+          disabled={acting}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-agent-compliance-muted text-agent-compliance hover:bg-agent-compliance/20 transition-colors disabled:opacity-50"
+        >
+          <Shield className="w-3.5 h-3.5" />
+          Add to Watchlist
+        </button>
       )}
 
       {isPending && data.type === "document" && (

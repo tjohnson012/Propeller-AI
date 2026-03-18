@@ -22,6 +22,9 @@ import { searchCrossRulings, formatRulingsForReport } from "@/lib/data/cross-rul
 import { getCountryGuide, getGuideContextForPipeline, formatGuideForReport } from "@/lib/data/country-guides";
 import { getTradeEvents, getMajorTradeShows, formatTradeEventsForReport } from "@/lib/data/trade-events";
 import { assessEndUseRisk, formatEndUseForReport } from "@/lib/data/end-use-screening";
+import { getUSTradeData, formatCensusTradeForReport } from "@/lib/data/census-trade";
+import { getTariffRates, formatTariffForReport } from "@/lib/data/tariffs";
+import { getRecentTradeRegulations, formatRegulationsForReport } from "@/lib/data/federal-register";
 import { getAnthropicClient, MODEL } from "@/lib/ai/client";
 import type { PipelineInput, PipelineEvent } from "./types";
 import type { HSCodeSuggestion } from "@/lib/data/hts";
@@ -30,6 +33,9 @@ import type { CrossRuling } from "@/lib/data/cross-rulings";
 import type { CountryGuide } from "@/lib/data/country-guides";
 import type { TradeEvent } from "@/lib/data/trade-events";
 import type { EndUseRiskAssessment } from "@/lib/data/end-use-screening";
+import type { CensusTradeFlow } from "@/lib/data/census-trade";
+import type { TariffRate } from "@/lib/data/tariffs";
+import type { FederalRegisterDoc } from "@/lib/data/federal-register";
 
 type Emit = (event: PipelineEvent) => void;
 
@@ -97,24 +103,32 @@ export async function runPipeline(
   emit({ type: "message", agentId: "market", text: hsMsg });
 
   // ────────────────────────────────────────────
-  // STEP 2: Trade Flow Analysis
+  // STEP 2: Trade Flow Analysis (Comtrade + Census)
   // ────────────────────────────────────────────
-  emit({ type: "step-start", step: "trade", label: "Querying UN Comtrade trade flows...", progress: 15 });
+  emit({ type: "step-start", step: "trade", label: "Querying trade flow databases...", progress: 15 });
 
   const tradeFlows: Array<{ hsCode: string; partners: TradePartner[]; totalValue: number }> = [];
   const primaryHS = hsCodes[0]?.code || "7325";
+  const primaryCountry = targetCountries[0] || "Canada";
 
-  try {
-    const flows = await getTradeFlows(primaryHS, "world", "import");
-    tradeFlows.push({ hsCode: primaryHS, partners: flows.partners, totalValue: flows.totalValue });
-  } catch {
-    // Fallback handled internally
+  // Fetch Comtrade and Census data in parallel
+  let censusFlows: CensusTradeFlow[] = [];
+  const [comtradeResult, censusResult] = await Promise.allSettled([
+    getTradeFlows(primaryHS, "world", "import"),
+    getUSTradeData(primaryHS, primaryCountry),
+  ]);
+
+  if (comtradeResult.status === "fulfilled") {
+    tradeFlows.push({ hsCode: primaryHS, partners: comtradeResult.value.partners, totalValue: comtradeResult.value.totalValue });
+  }
+  if (censusResult.status === "fulfilled") {
+    censusFlows = censusResult.value;
   }
 
   emit({
     type: "step-done",
     step: "trade",
-    label: `Trade data for ${tradeFlows[0]?.partners.length || 0} countries`,
+    label: `Trade data: ${tradeFlows[0]?.partners.length || 0} countries (Comtrade)${censusFlows.length > 0 ? ` + ${censusFlows.length} years (Census)` : ""}`,
     progress: 30,
   });
 
@@ -138,6 +152,11 @@ export async function runPipeline(
       targetData.forEach((p) => {
         tradeMsg += `- **${p.country}**: ${formatTradeValue(p.tradeValue)} imports (${p.share}% global share)\n`;
       });
+    }
+
+    // Add Census Bureau US-specific data
+    if (censusFlows.length > 0) {
+      tradeMsg += `\n${formatCensusTradeForReport(censusFlows, primaryCountry)}`;
     }
 
     emit({
@@ -183,12 +202,28 @@ export async function runPipeline(
 
   emit({ type: "message", agentId: "compliance", text: screenMsg });
 
+  // Offer to add screened entity to watchlist for ongoing monitoring
+  emit({
+    type: "message",
+    agentId: "compliance",
+    text: `Monitor **${companyName}** for future screening list changes? Adding to your compliance watchlist enables daily automated re-screening.`,
+    actionCard: {
+      type: "watchlist-add",
+      title: `Add ${companyName} to compliance watchlist`,
+      status: "pending",
+      metadata: {
+        entity: companyName,
+        type: "buyer",
+        country: primaryCountry,
+      },
+    },
+  });
+
   // ────────────────────────────────────────────
   // STEP 4: End-Use Risk Assessment
   // ────────────────────────────────────────────
-  emit({ type: "step-start", step: "controls", label: "Assessing end-use risk and export controls...", progress: 50 });
+  emit({ type: "step-start", step: "controls", label: "Assessing end-use risk, tariffs, and export controls...", progress: 50 });
 
-  const primaryCountry = targetCountries[0] || "Canada";
   const exportControls = getExportControlInfo(primaryHS, primaryCountry);
   const ftaInfo = getFTAInfo(primaryHS, primaryCountry);
 
@@ -200,7 +235,23 @@ export async function runPipeline(
     buyerName: companyName,
   });
 
-  emit({ type: "step-done", step: "controls", label: "Export controls and end-use assessment complete", progress: 58 });
+  // Tariff rate lookup (FTA + MFN)
+  let tariffRates: TariffRate[] = [];
+  try {
+    tariffRates = await getTariffRates(primaryHS, primaryCountry);
+  } catch {
+    // Tariff lookup is supplemental
+  }
+
+  // Federal Register regulatory updates
+  let recentRegulations: FederalRegisterDoc[] = [];
+  try {
+    recentRegulations = await getRecentTradeRegulations(30, 5);
+  } catch {
+    // Fed Register is supplemental
+  }
+
+  emit({ type: "step-done", step: "controls", label: "Export controls, tariffs, and end-use assessment complete", progress: 58 });
 
   let controlsMsg = `**Export Controls & End-Use Assessment**\n\n`;
   controlsMsg += `*Sources: [BIS Export Administration Regulations](https://www.bis.doc.gov/), [BIS Country Chart](https://www.bis.doc.gov/index.php/regulations/commerce-control-list-ccl)*\n\n`;
@@ -218,6 +269,16 @@ export async function runPipeline(
     });
   }
   controlsMsg += `\n**Recommendation:** ${endUseAssessment.recommendation}`;
+
+  // Add tariff rates
+  if (tariffRates.length > 0) {
+    controlsMsg += `\n\n${formatTariffForReport(tariffRates, primaryCountry)}`;
+  }
+
+  // Add recent regulatory updates
+  if (recentRegulations.length > 0) {
+    controlsMsg += `\n\n${formatRegulationsForReport(recentRegulations)}`;
+  }
 
   emit({ type: "message", agentId: "compliance", text: controlsMsg });
 
@@ -275,6 +336,9 @@ export async function runPipeline(
       countryGuide,
       crossRulings,
       tradeEvents: allEvents,
+      censusFlows,
+      tariffRates,
+      recentRegulations,
     });
   } catch {
     synthesisText = getTemplateSynthesis(companyName, product, targetCountries, hsCodes, tradeFlows, primaryCountry);
@@ -429,6 +493,9 @@ async function synthesizeFindings(data: {
   countryGuide: CountryGuide | null;
   crossRulings: CrossRuling[];
   tradeEvents: TradeEvent[];
+  censusFlows?: CensusTradeFlow[];
+  tariffRates?: TariffRate[];
+  recentRegulations?: FederalRegisterDoc[];
 }): Promise<string> {
   const client = getAnthropicClient();
 
@@ -464,6 +531,35 @@ async function synthesizeFindings(data: {
     });
   }
 
+  // Build Census trade data context
+  let censusContext = "";
+  if (data.censusFlows && data.censusFlows.length > 0) {
+    censusContext = `\n\nUS CENSUS BUREAU TRADE DATA (cite as [Source: U.S. Census Bureau International Trade]):\n`;
+    data.censusFlows.forEach((f) => {
+      censusContext += `- ${f.year}: US exports $${(f.exportValue / 1e6).toFixed(1)}M | US imports $${(f.importValue / 1e6).toFixed(1)}M\n`;
+    });
+  }
+
+  // Build tariff context
+  let tariffContext = "";
+  if (data.tariffRates && data.tariffRates.length > 0) {
+    tariffContext = `\n\nTARIFF RATES (cite source for each):\n`;
+    data.tariffRates.forEach((r) => {
+      if (r.mfnRate) tariffContext += `- MFN Rate: ${r.mfnRate} [Source: ${r.source}]\n`;
+      if (r.preferentialRate) tariffContext += `- Preferential Rate (${r.ftaName}): ${r.preferentialRate} [Source: ${r.source}]\n`;
+      if (r.finalRate && r.finalYear) tariffContext += `  Phase-out: reaches ${r.finalRate} by ${r.finalYear}\n`;
+    });
+  }
+
+  // Build regulatory updates context
+  let regContext = "";
+  if (data.recentRegulations && data.recentRegulations.length > 0) {
+    regContext = `\n\nRECENT REGULATORY CHANGES (mention if relevant to this export):\n`;
+    data.recentRegulations.slice(0, 3).forEach((r) => {
+      regContext += `- ${r.title} (${r.publicationDate}) — ${r.agencies.join(", ")}\n`;
+    });
+  }
+
   const prompt = `You are a senior export trade advisor — not a report generator. You're briefing ${data.companyName}'s leadership on their export opportunity. Be direct, specific, and opinionated. Use "you" and "your." Don't hedge with "may" or "could" when the data supports a clear recommendation.
 
 IMPORTANT: Every factual claim MUST cite its source in brackets. Use these formats:
@@ -473,6 +569,10 @@ IMPORTANT: Every factual claim MUST cite its source in brackets. Use these forma
 - [Source: Trade.gov Country Commercial Guide — {Country}] for country intelligence
 - [Source: CBP Ruling {number}] for classification rulings
 - [Source: BIS EAR] for export controls
+- [Source: U.S. Census Bureau International Trade] for US-specific trade statistics
+- [Source: Trade.gov FTA Tariff Rates] for preferential tariff rates
+- [Source: World Bank WITS] for MFN tariff rates
+- [Source: Federal Register] for regulatory updates
 - [AI Analysis] for your own conclusions and recommendations
 
 PRODUCT: ${data.product}
@@ -488,7 +588,7 @@ ${targetData.map((p) => `- ${p.country}: ${formatTradeValue(p.tradeValue)} impor
 COMPLIANCE: ${data.screening.status} | ECCN: ${data.exportControls.eccn} | License Required: ${data.exportControls.licenseRequired ? "Yes" : "No"}
 END-USE RISK: ${data.endUseAssessment.riskLevel.toUpperCase()} ${data.endUseAssessment.flags.length > 0 ? "— " + data.endUseAssessment.flags.map(f => f.description).join("; ") : ""}
 FTA: ${data.ftaInfo.eligible ? data.ftaInfo.agreement + " — " + data.ftaInfo.savings : "No applicable FTA for primary target"}
-${countryContext}${rulingsContext}${eventsContext}
+${countryContext}${rulingsContext}${censusContext}${tariffContext}${regContext}${eventsContext}
 
 Write in this format:
 

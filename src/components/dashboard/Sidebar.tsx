@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { sidebarExpanded, setSidebarExpanded, conversationHistory, setConversationHistory } = useAppStore();
+  const { sidebarExpanded, setSidebarExpanded, conversationHistory, setConversationHistory, unreadAlertCount } = useAppStore();
   const [showHistory, setShowHistory] = useState(false);
 
   // Load conversation history on mount
@@ -135,6 +135,11 @@ export function Sidebar() {
               >
                 {link.label}
               </span>
+              {link.href === "/dashboard/monitoring" && unreadAlertCount > 0 && (
+                <span className="ml-auto flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-[10px] font-bold text-white">
+                  {unreadAlertCount > 99 ? "99+" : unreadAlertCount}
+                </span>
+              )}
             </Link>
           );
         })}

@@ -4,7 +4,7 @@ import type { AgentId } from "./constants";
 /* ── Types ── */
 
 export interface ActionCardData {
-  type: "approval" | "classification" | "buyer-lead" | "document";
+  type: "approval" | "classification" | "buyer-lead" | "document" | "watchlist-add";
   title: string;
   status: "pending" | "approved" | "rejected" | "confirmed" | "dismissed";
   metadata?: Record<string, string>;
@@ -41,6 +41,33 @@ export interface ProductProfile {
   category: string;
   products: string;
   targetMarkets: string[];
+}
+
+/* ── Monitoring Types ── */
+
+export interface WatchlistEntity {
+  id: string;
+  entityName: string;
+  entityType: "buyer" | "supplier" | "intermediary" | "end-user";
+  country?: string;
+  hsCodes?: string[];
+  notes?: string;
+  status: "active" | "paused" | "archived";
+  lastScreenedAt?: string;
+  lastResult?: { matchCount: number; riskLevel: string; topMatch?: string };
+}
+
+export interface MonitoringAlert {
+  id: string;
+  watchlistEntityId: string;
+  entityName?: string;
+  alertType: "match_found" | "match_changed" | "match_removed" | "list_updated";
+  severity: "info" | "warning" | "critical";
+  title: string;
+  description: string;
+  matchedList?: string;
+  status: "unread" | "read" | "acknowledged" | "dismissed";
+  createdAt: string;
 }
 
 /* ── Store ── */
@@ -88,6 +115,16 @@ interface AppStore {
   setCurrentConversationId: (id: string | null) => void;
   conversationHistory: Array<{ id: string; title: string; updated_at: string }>;
   setConversationHistory: (history: Array<{ id: string; title: string; updated_at: string }>) => void;
+
+  // Monitoring
+  watchlistEntities: WatchlistEntity[];
+  setWatchlistEntities: (entities: WatchlistEntity[]) => void;
+  addWatchlistEntity: (entity: WatchlistEntity) => void;
+  removeWatchlistEntity: (id: string) => void;
+  monitoringAlerts: MonitoringAlert[];
+  setMonitoringAlerts: (alerts: MonitoringAlert[]) => void;
+  unreadAlertCount: number;
+  setUnreadAlertCount: (count: number) => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -150,4 +187,14 @@ export const useAppStore = create<AppStore>((set) => ({
   setCurrentConversationId: (id) => set({ currentConversationId: id }),
   conversationHistory: [],
   setConversationHistory: (history) => set({ conversationHistory: history }),
+
+  // Monitoring
+  watchlistEntities: [],
+  setWatchlistEntities: (entities) => set({ watchlistEntities: entities }),
+  addWatchlistEntity: (entity) => set((s) => ({ watchlistEntities: [...s.watchlistEntities, entity] })),
+  removeWatchlistEntity: (id) => set((s) => ({ watchlistEntities: s.watchlistEntities.filter((e) => e.id !== id) })),
+  monitoringAlerts: [],
+  setMonitoringAlerts: (alerts) => set({ monitoringAlerts: alerts }),
+  unreadAlertCount: 0,
+  setUnreadAlertCount: (count) => set({ unreadAlertCount: count }),
 }));

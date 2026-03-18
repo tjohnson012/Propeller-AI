@@ -76,5 +76,11 @@ export interface PipelineEvent {
     title: string;
     content: string;
   };
+  actionCard?: {
+    type: "approval" | "classification" | "buyer-lead" | "document" | "watchlist-add";
+    title: string;
+    status: "pending" | "approved" | "rejected" | "confirmed" | "dismissed";
+    metadata?: Record<string, string>;
+  };
   agentId?: string;
 }
