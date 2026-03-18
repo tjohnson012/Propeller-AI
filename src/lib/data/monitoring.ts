@@ -18,6 +18,8 @@ import {
   saveAlert,
   type SavedWatchlistEntity,
 } from "@/lib/supabase/persistence";
+import { getAllConnectionsForPlatform } from "@/lib/integrations/connections";
+import { sendSlackAlert } from "@/lib/integrations/slack-notify";
 
 export interface ScreeningChange {
   type: "new_match" | "match_removed" | "score_changed";
@@ -169,11 +171,13 @@ export async function runMonitoringSweep(): Promise<SweepResult> {
             : change.type === "score_changed" ? "warning"
             : "info";
 
+          const alertType = change.type === "new_match" ? "match_found"
+              : change.type === "match_removed" ? "match_removed"
+              : "match_changed";
+
           await saveAlert({
             watchlistEntityId: result.entityId,
-            alertType: change.type === "new_match" ? "match_found"
-              : change.type === "match_removed" ? "match_removed"
-              : "match_changed",
+            alertType,
             severity,
             title: `${result.entityName} — ${change.type === "new_match" ? "New Match Found"
               : change.type === "match_removed" ? "Match Removed"
@@ -182,6 +186,28 @@ export async function runMonitoringSweep(): Promise<SweepResult> {
             matchedList: change.listName,
           });
           alertCount++;
+
+          // Send Slack notification if user has Slack connected
+          try {
+            const slackConnections = await getAllConnectionsForPlatform("slack");
+            // Find the Slack connection for the entity owner
+            // watchlist_entities has user_id — match it against Slack connections
+            for (const slackConn of slackConnections) {
+              if (slackConn.metadata && (slackConn.metadata as Record<string, unknown>).channel_id) {
+                await sendSlackAlert(slackConn, {
+                  alertType: alertType as "match_found" | "match_changed" | "match_removed",
+                  severity: severity as "critical" | "warning" | "info",
+                  entityName: result.entityName,
+                  description: change.details,
+                  matchedList: change.listName,
+                  matchedName: result.topMatchName,
+                  matchScore: result.topMatchScore,
+                });
+              }
+            }
+          } catch {
+            // Don't let Slack failures break monitoring
+          }
         }
       }
     }

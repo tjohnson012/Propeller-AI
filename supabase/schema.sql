@@ -156,3 +156,31 @@ create table if not exists monitoring_runs (
   status text not null default 'running' check (status in ('running', 'completed', 'failed')),
   error text
 );
+
+-- ────────────────────────────────────────
+-- Integration Connections (OAuth tokens)
+-- ────────────────────────────────────────
+create table if not exists integration_connections (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  platform text not null check (platform in ('gmail', 'sheets', 'slack', 'quickbooks')),
+  access_token text not null,
+  refresh_token text,
+  token_type text default 'Bearer',
+  expires_at timestamptz,
+  scopes text,
+  metadata jsonb default '{}'::jsonb,
+  status text not null default 'active' check (status in ('active', 'revoked', 'expired')),
+  last_used_at timestamptz,
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null,
+  unique(user_id, platform)
+);
+
+alter table integration_connections enable row level security;
+create policy "Users manage own connections" on integration_connections
+  for all using (auth.uid() = user_id);
+
+create trigger integration_connections_updated_at
+  before update on integration_connections
+  for each row execute function update_updated_at();

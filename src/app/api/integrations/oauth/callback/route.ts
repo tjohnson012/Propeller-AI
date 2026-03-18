@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { saveConnection } from "@/lib/integrations/connections";
 
 /**
  * OAuth callback handler.
- * Exchanges the authorization code for an access token and stores it.
- *
- * In production, tokens would be stored in a database.
- * For the MVP, we log the token and redirect to settings with a success status.
+ * Exchanges the authorization code for an access token and persists it.
  */
 
 export async function GET(req: NextRequest) {
@@ -85,8 +83,49 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    if (tokenData) {
-      // Store token securely in database for production use
+    if (tokenData && platform) {
+      if (platform === "slack") {
+        // Slack returns { ok, access_token, team: { id, name }, bot_user_id, ... }
+        const slackData = tokenData as Record<string, unknown>;
+        if (slackData.ok && slackData.access_token) {
+          const team = slackData.team as { id?: string; name?: string } | undefined;
+          await saveConnection(platform, {
+            access_token: slackData.access_token as string,
+            token_type: "Bearer",
+            metadata: {
+              team_name: team?.name || "",
+              team_id: team?.id || "",
+              bot_user_id: (slackData.bot_user_id as string) || "",
+            },
+          });
+        }
+      } else if (platform === "gmail" || platform === "sheets") {
+        // Google returns { access_token, refresh_token, expires_in, token_type, scope }
+        const googleData = tokenData as Record<string, unknown>;
+        if (googleData.access_token) {
+          const expiresIn = (googleData.expires_in as number) || 3600;
+          const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+          await saveConnection(platform, {
+            access_token: googleData.access_token as string,
+            refresh_token: (googleData.refresh_token as string) || undefined,
+            token_type: (googleData.token_type as string) || "Bearer",
+            expires_at: expiresAt,
+            scopes: (googleData.scope as string) || undefined,
+          });
+        }
+      } else if (platform === "quickbooks") {
+        const qbData = tokenData as Record<string, unknown>;
+        if (qbData.access_token) {
+          const expiresIn = (qbData.expires_in as number) || 3600;
+          const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+          await saveConnection(platform, {
+            access_token: qbData.access_token as string,
+            refresh_token: (qbData.refresh_token as string) || undefined,
+            token_type: (qbData.token_type as string) || "Bearer",
+            expires_at: expiresAt,
+          });
+        }
+      }
     }
 
     return NextResponse.redirect(
