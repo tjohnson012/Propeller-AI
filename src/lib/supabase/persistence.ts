@@ -223,6 +223,7 @@ export async function getScreenings(): Promise<Array<{
 
 export interface SavedWatchlistEntity {
   id: string;
+  user_id?: string;
   entity_name: string;
   entity_type: string;
   country?: string;

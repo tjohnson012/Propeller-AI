@@ -140,6 +140,7 @@ export async function writeScreeningResults(
   spreadsheetId: string,
   results: SheetScreeningRow[],
   sheets?: Awaited<ReturnType<typeof getSheetsClient>>,
+  append = false,
 ): Promise<void> {
   const client = sheets || (await getSheetsClient());
   if (!client) return;
@@ -160,24 +161,13 @@ export async function writeScreeningResults(
         requests: [{ addSheet: { properties: { title: tabName } } }],
       },
     });
-  } else {
-    // Clear existing data
+  } else if (!append) {
+    // Clear existing data only on full rewrite (not append)
     await client.spreadsheets.values.clear({
       spreadsheetId,
       range: `'${tabName}'`,
     });
   }
-
-  // Write headers + data
-  const header = [
-    "Entity",
-    "Status",
-    "Risk Level",
-    "Match Score",
-    "Matched Name",
-    "List",
-    "Last Screened",
-  ];
 
   const rows = results.map((r) => [
     r.entity,
@@ -189,12 +179,33 @@ export async function writeScreeningResults(
     r.lastScreened,
   ]);
 
-  await client.spreadsheets.values.update({
-    spreadsheetId,
-    range: `'${tabName}'!A1`,
-    valueInputOption: "RAW",
-    requestBody: { values: [header, ...rows] },
-  });
+  if (append && existingTab) {
+    // Append new rows after existing data
+    await client.spreadsheets.values.append({
+      spreadsheetId,
+      range: `'${tabName}'!A1`,
+      valueInputOption: "RAW",
+      requestBody: { values: rows },
+    });
+  } else {
+    // Write headers + data (full rewrite or new tab)
+    const header = [
+      "Entity",
+      "Status",
+      "Risk Level",
+      "Match Score",
+      "Matched Name",
+      "List",
+      "Last Screened",
+    ];
+
+    await client.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${tabName}'!A1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [header, ...rows] },
+    });
+  }
 }
 
 /**

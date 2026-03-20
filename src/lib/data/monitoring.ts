@@ -187,14 +187,17 @@ export async function runMonitoringSweep(): Promise<SweepResult> {
           });
           alertCount++;
 
-          // Send Slack notification if user has Slack connected
+          // Send Slack notification to the entity owner (not all users)
           try {
-            const slackConnections = await getAllConnectionsForPlatform("slack");
-            // Find the Slack connection for the entity owner
-            // watchlist_entities has user_id — match it against Slack connections
-            for (const slackConn of slackConnections) {
-              if (slackConn.metadata && (slackConn.metadata as Record<string, unknown>).channel_id) {
-                await sendSlackAlert(slackConn, {
+            const entity = activeEntities.find((e) => e.id === result.entityId);
+            const entityUserId = entity?.user_id;
+            if (entityUserId) {
+              const slackConnections = await getAllConnectionsForPlatform("slack");
+              const ownerSlack = slackConnections.find(
+                (c) => c.user_id === entityUserId && (c.metadata as Record<string, unknown>)?.channel_id,
+              );
+              if (ownerSlack) {
+                await sendSlackAlert(ownerSlack, {
                   alertType: alertType as "match_found" | "match_changed" | "match_removed",
                   severity: severity as "critical" | "warning" | "info",
                   entityName: result.entityName,

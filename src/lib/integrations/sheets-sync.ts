@@ -167,9 +167,8 @@ export async function runIncrementalSyncForConnection(
 
   if (!meta.spreadsheet_id || meta.last_row_count === undefined) return null;
 
-  const sheets = connection.user_id
-    ? await getSheetsClientForConnection(connection)
-    : await getSheetsClient();
+  // Always use connection-based client (works in both user-session and cron/service-role context)
+  const sheets = await getSheetsClientForConnection(connection);
   if (!sheets) return null;
 
   // Read only new rows
@@ -242,35 +241,13 @@ export async function runIncrementalSyncForConnection(
     }
   }
 
-  // Append results to the Propeller Screening tab
+  // Append only the new screening results (don't re-screen existing rows)
   if (screeningResults.length > 0) {
-    // Read existing results and append new ones
-    const allData = await readSheetData(meta.spreadsheet_id, sheets);
-    // For simplicity, rewrite the whole tab (we could append, but full rewrite is safer)
-    const existingScreening: SheetScreeningRow[] = [];
-    if (allData) {
-      const { entityCol: eCol } = detectEntityColumns(allData.headers);
-      for (const row of allData.rows) {
-        const result = await screenEntity(row[eCol]?.trim());
-        const topMatch = result.matches[0];
-        existingScreening.push({
-          entity: row[eCol]?.trim(),
-          status: result.matched ? "FLAGGED" : "CLEAR",
-          riskLevel: result.matched
-            ? result.matchScore >= 90 ? "Critical" : result.matchScore >= 70 ? "High" : "Medium"
-            : "Low",
-          matchScore: result.matchScore,
-          matchedName: topMatch?.entry.name || "",
-          list: topMatch?.entry.sourceList || "",
-          lastScreened: new Date().toISOString().split("T")[0],
-        });
-      }
-    }
-
     await writeScreeningResults(
       meta.spreadsheet_id,
-      [...existingScreening, ...screeningResults],
+      screeningResults,
       sheets,
+      true, // append mode — don't overwrite existing results
     );
   }
 
