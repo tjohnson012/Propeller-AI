@@ -17,7 +17,7 @@ export function AgentStatusBar() {
   const pageTitle = currentLink?.label ?? "Dashboard";
 
   return (
-    <div className="h-10 flex items-center justify-between px-4 border-b border-border-primary bg-bg-primary shrink-0">
+    <div data-tour="agent-status-bar" className="h-10 flex items-center justify-between px-4 border-b border-border-primary bg-bg-primary shrink-0">
       <div className="flex items-center gap-1.5 text-sm">
         <span className="text-text-muted font-mono text-xs">propeller</span>
         <span className="text-text-muted">/</span>

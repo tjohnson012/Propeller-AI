@@ -11,10 +11,11 @@ import type { ChatMessage } from "@/lib/store";
 import { MessageSquare, Plus, LogOut, Trash2 } from "lucide-react";
 import { deleteConversation } from "@/lib/supabase/persistence";
 import { createClient } from "@/lib/supabase/client";
+import { OnboardingHub } from "./OnboardingHub";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { sidebarExpanded, setSidebarExpanded, conversationHistory, setConversationHistory, unreadAlertCount } = useAppStore();
+  const { sidebarExpanded, setSidebarExpanded, conversationHistory, setConversationHistory, unreadAlertCount, tourLockSidebar } = useAppStore();
   const [showHistory, setShowHistory] = useState(false);
 
   // Load conversation history on mount
@@ -69,7 +70,7 @@ export function Sidebar() {
   return (
     <aside
       onMouseEnter={() => setSidebarExpanded(true)}
-      onMouseLeave={() => { setSidebarExpanded(false); setShowHistory(false); }}
+      onMouseLeave={() => { if (!tourLockSidebar) { setSidebarExpanded(false); setShowHistory(false); } }}
       className={cn(
         "fixed left-0 top-0 bottom-0 z-40 flex flex-col bg-bg-secondary border-r border-border-primary transition-all duration-200 overflow-hidden",
         sidebarExpanded ? "w-56" : "w-12"
@@ -102,7 +103,7 @@ export function Sidebar() {
       )}
 
       {/* Nav */}
-      <nav className="flex-1 py-2 flex flex-col gap-px px-1.5 overflow-hidden">
+      <nav data-tour="sidebar-nav" className="flex-1 py-2 flex flex-col gap-px px-1.5 overflow-hidden">
         {sidebarLinks.map((link) => {
           const isActive =
             link.href === "/dashboard"
@@ -114,6 +115,12 @@ export function Sidebar() {
             <Link
               key={link.href}
               href={link.href}
+              data-tour={
+                link.href === "/dashboard/monitoring" ? "sidebar-monitoring"
+                : link.href === "/dashboard/trade-events" ? "sidebar-trade-events"
+                : link.href === "/dashboard/settings" ? "sidebar-integrations"
+                : undefined
+              }
               className={cn(
                 "flex items-center gap-3 px-2 py-2 rounded-lg transition-all duration-150",
                 isActive
@@ -177,6 +184,9 @@ export function Sidebar() {
           </>
         )}
       </nav>
+
+      {/* Onboarding Hub */}
+      {sidebarExpanded && <OnboardingHub />}
 
       {/* Logout */}
       {sidebarExpanded && (

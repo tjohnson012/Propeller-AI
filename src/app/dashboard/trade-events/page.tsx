@@ -73,6 +73,11 @@ export default function TradeEventsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
 
+  // Track visit for onboarding hub
+  useEffect(() => {
+    localStorage.setItem("propeller_visited_trade_events", "true");
+  }, []);
+
   // Load trade events
   useEffect(() => {
     async function loadEvents() {

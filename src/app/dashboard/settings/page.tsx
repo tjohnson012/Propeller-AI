@@ -190,12 +190,17 @@ function SettingsContent() {
       .then((r) => r.json())
       .then((data) => {
         const statuses: Record<string, OAuthStatus> = {};
+        let anyConnected = false;
         for (const item of data.integrations) {
           statuses[item.id] = {
             configured: item.configured,
             connected: item.connected,
             metadata: item.metadata,
           };
+          if (item.connected) anyConnected = true;
+        }
+        if (anyConnected) {
+          localStorage.setItem("propeller_connected_integration", "true");
         }
         setOauthStatuses(statuses);
       })

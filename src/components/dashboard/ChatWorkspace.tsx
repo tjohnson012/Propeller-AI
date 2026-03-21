@@ -11,20 +11,12 @@ import { ChatMessageComponent } from "./ChatMessageComponent";
 import { ChatInput } from "./ChatInput";
 import { Loader2, ArrowRight, Compass, Scale, Receipt, Handshake, Package, Globe, Play } from "lucide-react";
 import { CatalogUpload } from "./CatalogUpload";
+import { productSectors } from "@/lib/onboarding-constants";
+import { useOnboardingStore } from "@/lib/onboarding-store";
 
 interface ChatWorkspaceProps {
   agentContext: AgentId | null;
 }
-
-/* ── Manufacturing categories ── */
-const categories = [
-  { label: "Industrial Machinery", value: "industrial-machinery", icon: Package },
-  { label: "Steel & Metals", value: "steel-metals", icon: Package },
-  { label: "Automotive Parts", value: "automotive-parts", icon: Package },
-  { label: "Valves & Pumps", value: "valves-pumps", icon: Package },
-  { label: "Electronics", value: "electronics", icon: Package },
-  { label: "Chemicals", value: "chemicals", icon: Package },
-];
 
 const targetRegions = [
   { label: "Europe", markets: ["Germany", "UK", "France", "Netherlands"] },
@@ -38,9 +30,12 @@ const targetRegions = [
 /* ── Setup Flow ── */
 function SetupFlow() {
   const { setProductProfile } = useAppStore();
+  const { startTour, tourCompleted } = useOnboardingStore();
   const [step, setStep] = useState(0);
   const [companyName, setCompanyName] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [customCategory, setCustomCategory] = useState("");
+  const [activeSector, setActiveSector] = useState<string | null>(null);
   const [products, setProducts] = useState("");
   const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [launching, setLaunching] = useState(false);
@@ -53,16 +48,22 @@ function SetupFlow() {
       .filter((r) => selectedRegions.includes(r.label))
       .flatMap((r) => r.markets);
 
+    const categoryLabel = selectedCategory === "Other" ? customCategory || "Other" : selectedCategory;
     const profile = {
       companyName,
-      category: selectedCategory,
+      category: categoryLabel,
       products,
       targetMarkets: allMarkets,
     };
     setProductProfile(profile);
 
+    // Trigger guided tour after workspace loads (if not already completed)
+    if (!tourCompleted) {
+      setTimeout(() => startTour(), 2000);
+    }
+
     // Build a clean, natural first message
-    const productLabel = products || selectedCategory || "our products";
+    const productLabel = products || categoryLabel || "our products";
     const marketLabel = allMarkets.length > 0
       ? allMarkets.slice(0, 3).join(", ")
       : "international markets";
@@ -81,7 +82,7 @@ function SetupFlow() {
     try {
       await runPipelineStreaming({
         companyName,
-        product: products || selectedCategory || "manufacturing products",
+        product: products || categoryLabel || "manufacturing products",
         targetCountries: allMarkets,
       });
     } catch {
@@ -94,7 +95,7 @@ function SetupFlow() {
     } finally {
       setLaunching(false);
     }
-  }, [companyName, selectedCategory, products, selectedRegions, setProductProfile, launching]);
+  }, [companyName, selectedCategory, customCategory, products, selectedRegions, setProductProfile, launching, tourCompleted, startTour]);
 
   return (
     <div className="flex-1 flex items-center justify-center p-8">
@@ -152,32 +153,104 @@ function SetupFlow() {
             <h2 className="font-serif text-2xl text-text-primary mb-2">
               What do you manufacture?
             </h2>
-            <p className="text-sm text-text-secondary mb-8">
+            <p className="text-sm text-text-secondary mb-6">
               Select a category so we can match you with the right HS codes and buyers.
             </p>
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              {categories.map((cat) => (
+
+            {/* Sector tabs */}
+            <div className="flex flex-wrap gap-1.5 mb-5">
+              <button
+                onClick={() => setActiveSector(null)}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  activeSector === null
+                    ? "bg-accent text-white"
+                    : "bg-bg-secondary text-text-muted hover:text-text-secondary",
+                )}
+              >
+                All
+              </button>
+              {productSectors.map((sector) => (
                 <button
-                  key={cat.value}
-                  onClick={() => {
-                    setSelectedCategory(cat.label);
-                    setStep(2);
-                  }}
+                  key={sector.name}
+                  onClick={() => setActiveSector(sector.name)}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3.5 rounded-lg border transition-colors text-left",
-                    selectedCategory === cat.label
-                      ? "border-accent bg-accent-muted text-text-primary"
-                      : "border-border-primary bg-bg-secondary text-text-secondary hover:border-border-hover hover:text-text-primary",
+                    "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                    activeSector === sector.name
+                      ? "bg-accent text-white"
+                      : "bg-bg-secondary text-text-muted hover:text-text-secondary",
                   )}
                 >
-                  <cat.icon className="w-4 h-4 shrink-0" />
-                  <span className="text-sm">{cat.label}</span>
+                  {sector.name}
                 </button>
               ))}
             </div>
 
+            {/* Category grid */}
+            <div className="max-h-[320px] overflow-y-auto pr-1 space-y-4 mb-4">
+              {productSectors
+                .filter((s) => !activeSector || s.name === activeSector)
+                .map((sector) => (
+                  <div key={sector.name}>
+                    {!activeSector && (
+                      <p className="text-[11px] text-text-muted font-medium uppercase tracking-wider mb-2">
+                        {sector.name}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      {sector.categories.map((cat) => (
+                        <button
+                          key={cat.value}
+                          onClick={() => {
+                            setSelectedCategory(cat.label);
+                            if (cat.value !== "other") setStep(2);
+                          }}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3 py-2.5 rounded-lg border transition-colors text-left",
+                            selectedCategory === cat.label
+                              ? "border-accent bg-accent-muted text-text-primary"
+                              : "border-border-primary bg-bg-secondary text-text-secondary hover:border-border-hover hover:text-text-primary",
+                          )}
+                        >
+                          <Package className="w-3.5 h-3.5 shrink-0" />
+                          <span className="text-sm">{cat.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            {/* Custom category input for "Other" */}
+            {selectedCategory === "Other" && (
+              <div className="mb-4 animation-slide-up">
+                <input
+                  type="text"
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  placeholder="Describe your product category..."
+                  className="input-field w-full px-3 py-2.5 text-sm"
+                  autoFocus
+                  onKeyDown={(e) => e.key === "Enter" && customCategory.trim() && setStep(2)}
+                />
+                <button
+                  onClick={() => setStep(2)}
+                  disabled={!customCategory.trim()}
+                  className={cn(
+                    "mt-3 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+                    customCategory.trim()
+                      ? "bg-accent text-white hover:bg-accent-hover"
+                      : "bg-bg-tertiary text-text-muted",
+                  )}
+                >
+                  Continue
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {/* Divider */}
-            <div className="flex items-center gap-3 my-6">
+            <div className="flex items-center gap-3 my-5">
               <div className="flex-1 h-px bg-border-primary" />
               <span className="text-xs text-text-muted">or</span>
               <div className="flex-1 h-px bg-border-primary" />
@@ -586,16 +659,18 @@ export function ChatWorkspace({ agentContext }: ChatWorkspaceProps) {
   // Setup done, no messages: show one-click workflows
   if (!hasMessages) {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div data-tour="workspace-chat" className="flex-1 flex flex-col overflow-hidden">
         <WorkflowDashboard agentContext={agentContext} />
-        <ChatInput agentContext={agentContext} />
+        <div data-tour="chat-input">
+          <ChatInput agentContext={agentContext} />
+        </div>
       </div>
     );
   }
 
   // Active conversation
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div data-tour="workspace-chat" className="flex-1 flex flex-col overflow-hidden">
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-6">
         <div className="max-w-2xl mx-auto">
           {filteredMessages.map((msg) => (
@@ -612,7 +687,9 @@ export function ChatWorkspace({ agentContext }: ChatWorkspaceProps) {
           {!isStreaming && <ContinueButton agentContext={agentContext} />}
         </div>
       </div>
-      <ChatInput agentContext={agentContext} />
+      <div data-tour="chat-input">
+        <ChatInput agentContext={agentContext} />
+      </div>
     </div>
   );
 }

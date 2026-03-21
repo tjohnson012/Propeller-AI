@@ -218,6 +218,11 @@ export async function runPipelineStreaming(opts: PipelineOptions): Promise<void>
           currentStore.updateAgentStatus("compliance", { status: "complete", currentTask: "Done", progress: 100 });
           currentStore.updateAgentStatus("outreach", { status: "complete", currentTask: "Done", progress: 100 });
           currentStore.updateAgentStatus("finance", { status: "complete", currentTask: "Done", progress: 100 });
+
+          // Track first analysis completion for onboarding hub
+          if (typeof window !== "undefined") {
+            localStorage.setItem("propeller_first_analysis", "true");
+          }
           break;
         }
       }

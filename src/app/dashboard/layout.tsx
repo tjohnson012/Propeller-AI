@@ -3,6 +3,7 @@
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { AgentStatusBar } from "@/components/dashboard/AgentStatusBar";
 import { ArtifactPanel } from "@/components/dashboard/ArtifactPanel";
+import { TourOverlay } from "@/components/dashboard/TourOverlay";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +31,7 @@ export default function DashboardLayout({
           <ArtifactPanel />
         </div>
       </div>
+      <TourOverlay />
     </div>
   );
 }

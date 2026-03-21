@@ -125,6 +125,10 @@ interface AppStore {
   setMonitoringAlerts: (alerts: MonitoringAlert[]) => void;
   unreadAlertCount: number;
   setUnreadAlertCount: (count: number) => void;
+
+  // Tour
+  tourLockSidebar: boolean;
+  setTourLockSidebar: (v: boolean) => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -197,4 +201,8 @@ export const useAppStore = create<AppStore>((set) => ({
   setMonitoringAlerts: (alerts) => set({ monitoringAlerts: alerts }),
   unreadAlertCount: 0,
   setUnreadAlertCount: (count) => set({ unreadAlertCount: count }),
+
+  // Tour
+  tourLockSidebar: false,
+  setTourLockSidebar: (v) => set({ tourLockSidebar: v }),
 }));
