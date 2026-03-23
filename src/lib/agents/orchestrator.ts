@@ -185,13 +185,15 @@ Your job in the pipeline:
 1. Take the top HS code and target countries from Market Intelligence
 2. Check export controls for the main HS code to ONE key target country
 3. Check FTA eligibility for ONE key target country
-4. Screen the company name if provided (ONE call to screen_entity)
+4. Screen TRADE PARTNERS (buyers, suppliers, intermediaries) — NOT the user's own company. The user's company is the exporter. Screen entities mentioned as potential trade partners, importers, or counterparties.
 5. Call generate_screening_report as your FINAL step
+
+IMPORTANT: The company in the User Profile is the USER — they are the exporter. Do NOT screen them. Screen their potential buyers, suppliers, and trade partners in target markets instead.
 
 EFFICIENCY IS CRITICAL — you have limited tool calls:
 - Use check_export_controls ONCE with the primary HS code + most important destination
 - Use check_fta_eligibility ONCE for the top target country
-- Screen entities with ONE call (use screen_entities_batch if multiple)
+- Screen trade partner entities with ONE call (use screen_entities_batch if multiple)
 - Then IMMEDIATELY call generate_screening_report. Do NOT delay this.
 
 Rules:

@@ -82,6 +82,69 @@ export const HS_DATABASE: HSCode[] = [
   { code: "4016.99", description: "Other articles of vulcanized rubber, NES", chapter: 40, section: "VII", generalDutyRate: "2.5%", specialPrograms: ["USMCA"], unit: "kg" },
 
   // ═══════════════════════════════════════════════════════════
+  // Chapter 41 — Raw Hides and Skins (Other Than Furskins) and Leather
+  // ═══════════════════════════════════════════════════════════
+  { code: "4104.11", description: "Full grains bovine/equine leather, unsplit, in the wet state", chapter: 41, section: "VIII", generalDutyRate: "2.4%", specialPrograms: ["USMCA"], unit: "m2", notes: "Cowhide leather, full grain bovine hides" },
+  { code: "4104.19", description: "Bovine/equine leather, other, in the wet state", chapter: 41, section: "VIII", generalDutyRate: "2.4%", specialPrograms: ["USMCA"], unit: "m2" },
+  { code: "4107.11", description: "Full grains bovine/equine leather, further prepared, whole hides", chapter: 41, section: "VIII", generalDutyRate: "2.8%", specialPrograms: ["USMCA"], unit: "m2", notes: "Finished leather hides, full grain cowhide leather" },
+  { code: "4107.19", description: "Bovine/equine leather, further prepared, other, whole hides", chapter: 41, section: "VIII", generalDutyRate: "2.8%", specialPrograms: ["USMCA"], unit: "m2" },
+  { code: "4113.10", description: "Leather of goats or kids, further prepared", chapter: 41, section: "VIII", generalDutyRate: "2.4%", specialPrograms: ["USMCA"], unit: "m2", notes: "Goatskin leather, kid leather" },
+
+  // ═══════════════════════════════════════════════════════════
+  // Chapter 42 — Articles of Leather; Saddlery and Harness; Travel Goods
+  // ═══════════════════════════════════════════════════════════
+  { code: "4201.00", description: "Saddlery and harness for any animal, of any material", chapter: 42, section: "VIII", generalDutyRate: "2.8%", specialPrograms: ["USMCA"], unit: "No" },
+  { code: "4202.11", description: "Trunks, suitcases, vanity cases with outer surface of leather", chapter: 42, section: "VIII", generalDutyRate: "8%", specialPrograms: ["USMCA"], unit: "No", notes: "Leather luggage, leather suitcases, travel bags" },
+  { code: "4202.21", description: "Handbags with outer surface of leather", chapter: 42, section: "VIII", generalDutyRate: "8%", specialPrograms: ["USMCA"], unit: "No", notes: "Leather handbags, leather purses, leather totes" },
+  { code: "4202.31", description: "Wallets, purses, key-cases with outer surface of leather", chapter: 42, section: "VIII", generalDutyRate: "8%", specialPrograms: ["USMCA"], unit: "No", notes: "Leather wallets, leather billfolds, leather card cases" },
+  { code: "4202.91", description: "Other containers with outer surface of leather", chapter: 42, section: "VIII", generalDutyRate: "8%", specialPrograms: ["USMCA"], unit: "No", notes: "Leather cases, leather pouches, leather holders" },
+  { code: "4203.10", description: "Articles of apparel of leather or composition leather", chapter: 42, section: "VIII", generalDutyRate: "6%", specialPrograms: ["USMCA"], unit: "No", notes: "Leather jackets, leather coats, leather vests, leather clothing" },
+  { code: "4203.21", description: "Gloves, mittens and mitts of leather, specially designed for use in sports", chapter: 42, section: "VIII", generalDutyRate: "3%", specialPrograms: ["USMCA"], unit: "doz. prs", notes: "Baseball gloves, batting gloves, golf gloves, sports leather gloves, baseball mitts" },
+  { code: "4203.29", description: "Gloves, mittens and mitts of leather, other", chapter: 42, section: "VIII", generalDutyRate: "14%", specialPrograms: ["USMCA"], unit: "doz. prs", notes: "Leather work gloves, leather dress gloves, driving gloves, motorcycle gloves" },
+  { code: "4203.30", description: "Belts and bandoliers of leather", chapter: 42, section: "VIII", generalDutyRate: "2.7%", specialPrograms: ["USMCA"], unit: "No", notes: "Leather belts, leather straps" },
+  { code: "4203.40", description: "Other clothing accessories of leather", chapter: 42, section: "VIII", generalDutyRate: "3.9%", specialPrograms: ["USMCA"], unit: "No", notes: "Leather accessories, leather wristbands" },
+  { code: "4205.00", description: "Other articles of leather or composition leather", chapter: 42, section: "VIII", generalDutyRate: "3.3%", specialPrograms: ["USMCA"], unit: "kg", notes: "Leather goods, leather products, leather crafts, leather articles NES" },
+
+  // ═══════════════════════════════════════════════════════════
+  // Chapter 61 — Articles of Apparel, Knitted or Crocheted
+  // ═══════════════════════════════════════════════════════════
+  { code: "6110.20", description: "Jerseys, pullovers, cardigans of cotton, knitted", chapter: 61, section: "XI", generalDutyRate: "16.5%", specialPrograms: ["USMCA"], unit: "doz", notes: "Cotton sweaters, cotton knitwear, cotton jerseys" },
+  { code: "6116.10", description: "Gloves impregnated, coated or covered with plastics or rubber, knitted", chapter: 61, section: "XI", generalDutyRate: "13.2%", specialPrograms: ["USMCA"], unit: "doz. prs", notes: "Work gloves, coated knit gloves, rubber grip gloves" },
+
+  // ═══════════════════════════════════════════════════════════
+  // Chapter 62 — Articles of Apparel, Not Knitted
+  // ═══════════════════════════════════════════════════════════
+  { code: "6211.33", description: "Men's tracksuits, ski suits and swimwear of man-made fibers", chapter: 62, section: "XI", generalDutyRate: "16%", specialPrograms: ["USMCA"], unit: "doz", notes: "Athletic wear, sportswear, sports uniforms, team uniforms" },
+  { code: "6216.00", description: "Gloves, mittens and mitts (textile), not knitted", chapter: 62, section: "XI", generalDutyRate: "10.4%", specialPrograms: ["USMCA"], unit: "doz. prs", notes: "Textile gloves, fabric gloves, cloth gloves" },
+
+  // ═══════════════════════════════════════════════════════════
+  // Chapter 64 — Footwear
+  // ═══════════════════════════════════════════════════════════
+  { code: "6403.19", description: "Sports footwear with outer soles of rubber/plastics, upper of leather", chapter: 64, section: "XII", generalDutyRate: "8.5%", specialPrograms: ["USMCA"], unit: "prs", notes: "Leather athletic shoes, cleats, sports shoes, baseball cleats" },
+  { code: "6403.51", description: "Footwear with outer soles of leather, covering the ankle", chapter: 64, section: "XII", generalDutyRate: "8.5%", specialPrograms: ["USMCA"], unit: "prs", notes: "Leather boots, work boots, hiking boots" },
+  { code: "6403.59", description: "Footwear with outer soles of leather, other", chapter: 64, section: "XII", generalDutyRate: "8.5%", specialPrograms: ["USMCA"], unit: "prs", notes: "Leather shoes, dress shoes, casual leather shoes" },
+
+  // ═══════════════════════════════════════════════════════════
+  // Chapter 65 — Headgear
+  // ═══════════════════════════════════════════════════════════
+  { code: "6506.10", description: "Safety headgear (helmets)", chapter: 65, section: "XII", generalDutyRate: "Free", specialPrograms: ["USMCA"], unit: "No", notes: "Hard hats, safety helmets, construction helmets, sports helmets, batting helmets" },
+  { code: "6506.99", description: "Headgear, other", chapter: 65, section: "XII", generalDutyRate: "8.5%", specialPrograms: ["USMCA"], unit: "No", notes: "Hats, caps, baseball caps, sports caps, visors" },
+
+  // ═══════════════════════════════════════════════════════════
+  // Chapter 95 — Toys, Games, Sports Equipment
+  // ═══════════════════════════════════════════════════════════
+  { code: "9506.39", description: "Golf clubs and other golf equipment", chapter: 95, section: "XX", generalDutyRate: "4.9%", specialPrograms: ["USMCA"], unit: "No", notes: "Golf clubs, golf bags, golf equipment" },
+  { code: "9506.40", description: "Articles and equipment for table tennis", chapter: 95, section: "XX", generalDutyRate: "5.1%", specialPrograms: ["USMCA"], unit: "No" },
+  { code: "9506.51", description: "Lawn-tennis rackets, whether or not strung", chapter: 95, section: "XX", generalDutyRate: "3.9%", specialPrograms: ["USMCA"], unit: "No", notes: "Tennis rackets, badminton rackets" },
+  { code: "9506.59", description: "Badminton or similar rackets, other", chapter: 95, section: "XX", generalDutyRate: "5.3%", specialPrograms: ["USMCA"], unit: "No" },
+  { code: "9506.61", description: "Lawn-tennis balls", chapter: 95, section: "XX", generalDutyRate: "Free", specialPrograms: ["USMCA"], unit: "No" },
+  { code: "9506.62", description: "Inflatable balls", chapter: 95, section: "XX", generalDutyRate: "Free", specialPrograms: ["USMCA"], unit: "No", notes: "Footballs, soccer balls, basketballs, volleyballs" },
+  { code: "9506.69", description: "Balls, other (except golf balls and table-tennis balls)", chapter: 95, section: "XX", generalDutyRate: "Free", specialPrograms: ["USMCA"], unit: "No", notes: "Baseballs, softballs, cricket balls" },
+  { code: "9506.70", description: "Ice skates and roller skates, including skating boots with skates attached", chapter: 95, section: "XX", generalDutyRate: "Free", specialPrograms: ["USMCA"], unit: "prs" },
+  { code: "9506.91", description: "Articles and equipment for general physical exercise, gymnastics or athletics", chapter: 95, section: "XX", generalDutyRate: "4.6%", specialPrograms: ["USMCA"], unit: "No", notes: "Exercise equipment, gym equipment, fitness gear, weights, treadmills" },
+  { code: "9506.99", description: "Articles and equipment for sports and outdoor games, NES; swimming pools and paddling pools", chapter: 95, section: "XX", generalDutyRate: "Free", specialPrograms: ["USMCA"], unit: "No", notes: "Baseball equipment, baseball bats, softball equipment, sports gear, sporting goods, athletic equipment, protective sports gear, batting cages" },
+
+  // ═══════════════════════════════════════════════════════════
   // Chapter 68 — Stone, Plaster, Cement, Ceramic Articles
   // ═══════════════════════════════════════════════════════════
   { code: "6802.93", description: "Worked granite articles (dimensional stone)", chapter: 68, section: "XIII", generalDutyRate: "3.7%", specialPrograms: ["USMCA"], unit: "kg" },
@@ -346,6 +409,13 @@ const SEARCH_BOOST_TERMS = [
   "lathe", "cnc", "laser", "plastic", "resin", "filament", "powder",
   "alloy", "stainless", "cast iron", "investment casting", "sand casting",
   "die casting", "lost wax", "precision", "superalloy", "cermet", "carbide",
+  // Leather, textiles, apparel
+  "leather", "glove", "baseball", "sports", "sporting", "footwear", "shoe",
+  "boot", "apparel", "garment", "textile", "handbag", "wallet", "belt",
+  "luggage", "saddle", "hide", "cowhide", "goatskin", "suede",
+  // Sporting goods
+  "golf", "tennis", "racket", "ball", "bat", "helmet", "equipment",
+  "fitness", "exercise", "athletic", "uniform",
 ];
 
 /**

@@ -170,49 +170,77 @@ export async function runPipeline(
   // ────────────────────────────────────────────
   // STEP 3: Compliance Screening
   // ────────────────────────────────────────────
-  emit({ type: "step-start", step: "screen", label: "Screening against Consolidated Screening List...", progress: 35 });
+  // Screen trade partners in target countries, NOT the user's own company.
+  // The user's company is the exporter — we screen their potential buyers/partners.
+  emit({ type: "step-start", step: "screen", label: "Screening trade partners in target markets...", progress: 35 });
 
   await loadSDNList();
-  const screeningResult = await screenEntity(companyName);
-  const matchCount = screeningResult.matches.length;
-  const listsCount = screeningResult.listsChecked.length;
+
+  // Screen top trade partners from Comtrade data (real importers in target markets)
+  const partnersToScreen: string[] = [];
+  if (tradeFlows.length > 0 && tradeFlows[0].partners.length > 0) {
+    for (const partner of tradeFlows[0].partners.slice(0, 5)) {
+      if (partner.country && partner.country !== "World") {
+        partnersToScreen.push(partner.country);
+      }
+    }
+  }
+  // Fallback: screen target countries as entities if no trade partners found
+  if (partnersToScreen.length === 0) {
+    partnersToScreen.push(...targetCountries.slice(0, 3));
+  }
+
+  const screeningResults = await Promise.all(
+    partnersToScreen.map((partner) => screenEntity(partner)),
+  );
+  const flaggedResults = screeningResults.filter((r) => r.matched);
+  const totalMatches = flaggedResults.reduce((sum, r) => sum + r.matches.length, 0);
+  const listsCount = screeningResults[0]?.listsChecked.length ?? 13;
+
+  // Use first result for downstream compatibility
+  const screeningResult = screeningResults[0] ?? await screenEntity(companyName);
+  const matchCount = totalMatches;
 
   emit({
     type: "step-done",
     step: "screen",
-    label: matchCount > 0 ? "FLAGGED — matches found" : "CLEAR — no matches",
+    label: totalMatches > 0 ? "FLAGGED — matches found" : `CLEAR — ${partnersToScreen.length} partners screened`,
     progress: 45,
   });
 
-  let screenMsg = matchCount > 0
-    ? `**Compliance Screening: FLAGGED**\n\n`
-    : `**Compliance Screening: CLEAR**\n\n`;
+  let screenMsg = totalMatches > 0
+    ? `**Trade Partner Screening: FLAGGED**\n\n`
+    : `**Trade Partner Screening: CLEAR**\n\n`;
   screenMsg += `*Source: [U.S. Consolidated Screening List](https://www.trade.gov/consolidated-screening-list) — ${listsCount} federal lists, 25,000+ entities*\n\n`;
 
-  if (matchCount > 0) {
-    screenMsg += `⚠️ ${matchCount} potential match(es) for "${companyName}":\n\n`;
-    screenMsg += screeningResult.matches.slice(0, 5).map((m) =>
-      `- **${m.entry.name}** (${Math.round(m.score * 100)}% match) — ${m.entry.sourceList}`
-    ).join("\n");
+  if (totalMatches > 0) {
+    screenMsg += `⚠️ Potential matches found:\n\n`;
+    for (const result of flaggedResults) {
+      screenMsg += result.matches.slice(0, 3).map((m) =>
+        `- **${m.entry.name}** (${Math.round(m.score * 100)}% match) — ${m.entry.sourceList}`
+      ).join("\n");
+    }
     screenMsg += `\n\n*Manual review recommended before proceeding.*`;
   } else {
-    screenMsg += `✓ "${companyName}" — no matches found.\n\n`;
-    screenMsg += `Lists checked: OFAC SDN, BIS Entity List, BIS Denied Persons, BIS Unverified, ITAR Debarred, and ${listsCount - 5} additional federal lists.`;
+    screenMsg += `✓ Screened ${partnersToScreen.length} trade partner(s): ${partnersToScreen.join(", ")}\n\n`;
+    screenMsg += `No matches found across ${listsCount} federal screening lists (OFAC SDN, BIS Entity List, BIS Denied Persons, BIS Unverified, ITAR Debarred, and more).\n\n`;
+    screenMsg += `*Screen specific buyers or suppliers by name in the Compliance tab.*`;
   }
 
   emit({ type: "message", agentId: "compliance", text: screenMsg });
 
-  // Offer to add screened entity to watchlist for ongoing monitoring
+  // Offer to add trade partners to watchlist for ongoing monitoring
+  const watchlistEntity = partnersToScreen[0] || companyName;
   emit({
     type: "message",
     agentId: "compliance",
-    text: `Monitor **${companyName}** for future screening list changes? Adding to your compliance watchlist enables daily automated re-screening.`,
+    text: `Add your trade partners to the compliance watchlist for daily automated re-screening against the Consolidated Screening List.`,
     actionCard: {
       type: "watchlist-add",
-      title: `Add ${companyName} to compliance watchlist`,
+      title: `Add trade partners to compliance watchlist`,
       status: "pending",
       metadata: {
-        entity: companyName,
+        entity: watchlistEntity,
         type: "buyer",
         country: primaryCountry,
       },
@@ -308,7 +336,7 @@ export async function runPipeline(
   // Emit trade events message
   if (allEvents.length > 0) {
     let eventsMsg = `**Upcoming Trade Events**\n\n`;
-    allEvents.slice(0, 6).forEach((event) => {
+    allEvents.slice(0, 15).forEach((event) => {
       eventsMsg += `- **${event.name}** — ${event.startDate}${event.endDate ? ` to ${event.endDate}` : ""}\n`;
       eventsMsg += `  ${event.location} | [Details](${event.url})\n`;
       eventsMsg += `  *Source: ${event.source}*\n`;
@@ -517,7 +545,7 @@ async function synthesizeFindings(data: {
   let eventsContext = "";
   if (data.tradeEvents.length > 0) {
     eventsContext = `\n\nUPCOMING TRADE EVENTS (mention relevant ones in recommendations):\n`;
-    data.tradeEvents.slice(0, 5).forEach((e) => {
+    data.tradeEvents.slice(0, 12).forEach((e) => {
       eventsContext += `- ${e.name} | ${e.startDate} | ${e.location} | ${e.source}\n`;
     });
   }
@@ -729,7 +757,7 @@ ${synthesis}`;
 
   // Add trade events section
   if (tradeEvents.length > 0) {
-    report += `\n\n---\n\n${formatTradeEventsForReport(tradeEvents.slice(0, 8))}`;
+    report += `\n\n---\n\n${formatTradeEventsForReport(tradeEvents.slice(0, 20))}`;
   }
 
   report += `\n\n---\n\n*Generated by Propeller AI — ${timestamp}*\n*All data sourced from U.S. government databases and international trade organizations. AI-generated analysis is labeled [AI Analysis].*`;

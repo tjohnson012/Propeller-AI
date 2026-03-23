@@ -13,7 +13,7 @@ const AGENT_HANDOFF_DIRECTIVES: Record<AgentId, string> = {
   market: `You are the Market Intelligence agent. You are FIRST in the pipeline.
 YOUR JOB: Classify the product to HS codes, search trade flows, identify top markets. Your LAST tool call MUST be generate_market_report to create a downloadable document.`,
   compliance: `You are the Compliance agent. Market Intelligence has already identified HS codes, target countries, and trade data above.
-YOUR JOB: Use those HS codes to check export controls and FTA eligibility for each target country. Screen any mentioned entities. Do NOT re-classify products. Your LAST tool call MUST be generate_screening_report to create a downloadable compliance report.`,
+YOUR JOB: Use those HS codes to check export controls and FTA eligibility for each target country. Screen TRADE PARTNERS (buyers, suppliers, importers) — NOT the user's own company. The user is the exporter. Do NOT re-classify products. Your LAST tool call MUST be generate_screening_report to create a downloadable compliance report.`,
   outreach: `You are the Outreach agent. Market Intelligence found target countries and Trade Compliance cleared the export.
 YOUR JOB: Draft outreach emails for the top 2-3 target markets using draft_outreach_email. Generate a follow-up for the #1 market. Your LAST tool call MUST be generate_outreach_package to create a downloadable email package.`,
   finance: `You are the Finance agent. The prior agents identified target countries, HS codes, compliance status, and began outreach.
