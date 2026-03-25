@@ -434,20 +434,11 @@ export function getMajorTradeShows(industry: string, countries: string[]): Trade
     return { show: s, score };
   });
 
-  // Return everything with score > 0, sorted by relevance
-  // Also include top US shows even with low match as "also consider" options
-  const matched = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
-
-  // If very few industry matches, include top general US shows
-  if (matched.length < 8) {
-    const extras = scored
-      .filter((s) => s.score === 0 && s.show.country === "United States")
-      .sort((a, b) => b.show.description.length - a.show.description.length)
-      .slice(0, 5);
-    matched.push(...extras);
-  }
-
-  return matched.map((s) => s.show);
+  // Return ALL shows sorted by relevance — matched shows first, then everything else
+  // This ensures the trade events page always has a full calendar to browse
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .map((s) => s.show);
 }
 
 /**

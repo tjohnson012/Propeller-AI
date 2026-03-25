@@ -36,11 +36,18 @@ type ViewMode = "list" | "calendar";
 const INDUSTRY_FILTERS = [
   "All",
   "Manufacturing",
+  "Food & Beverage",
   "Technology",
   "Healthcare",
+  "Automotive",
+  "Sporting Goods",
+  "Textiles & Apparel",
+  "Packaging",
+  "Logistics",
   "Energy",
   "Agriculture",
-  "Automotive",
+  "Construction",
+  "Consumer Goods",
   "Aerospace & Defense",
 ];
 
@@ -116,9 +123,9 @@ export default function TradeEventsPage() {
 
         setEvents(allEvents);
       } catch {
-        // Use curated shows as fallback
+        // Use curated shows as fallback — show ALL shows so the calendar is full
         const { getMajorTradeShows } = await import("@/lib/data/trade-events");
-        setEvents(getMajorTradeShows("manufacturing", []));
+        setEvents(getMajorTradeShows(productProfile?.category || "", []));
       } finally {
         setLoading(false);
       }
@@ -129,10 +136,11 @@ export default function TradeEventsPage() {
   // Filter events
   const filteredEvents = useMemo(() => {
     return events.filter((event) => {
-      // Industry filter
+      // Industry filter — match any word from the filter (e.g. "Food & Beverage" matches "food" or "beverage")
       if (industryFilter !== "All") {
         const eventText = (event.name + " " + event.description + " " + event.industries.join(" ")).toLowerCase();
-        if (!eventText.includes(industryFilter.toLowerCase())) return false;
+        const filterWords = industryFilter.toLowerCase().split(/[\s&]+/).filter((w) => w.length > 2);
+        if (!filterWords.some((w) => eventText.includes(w))) return false;
       }
 
       // Region filter
@@ -163,10 +171,11 @@ export default function TradeEventsPage() {
     });
   }, [events, industryFilter, regionFilter, selectedMonth, searchQuery]);
 
-  // Recommended events based on profile
+  // Recommended events based on profile — word-level matching for better coverage
   const recommendedEvents = useMemo(() => {
     if (!productProfile) return [];
     const category = productProfile.category?.toLowerCase() || "";
+    const categoryWords = category.split(/[\s,;&/+\-()]+/).filter((w) => w.length > 2);
     const markets = productProfile.targetMarkets?.map((m) => m.toLowerCase()) || [];
 
     return events
@@ -174,11 +183,11 @@ export default function TradeEventsPage() {
         const text = (e.name + " " + e.description + " " + e.industries.join(" ")).toLowerCase();
         const country = e.country.toLowerCase();
         return (
-          text.includes(category) ||
+          categoryWords.some((w) => text.includes(w)) ||
           markets.some((m) => country.includes(m) || text.includes(m))
         );
       })
-      .slice(0, 4);
+      .slice(0, 6);
   }, [events, productProfile]);
 
   // Calendar months
@@ -202,7 +211,7 @@ export default function TradeEventsPage() {
         <div>
           <h1 className="text-xl font-serif text-text-primary">Trade Events</h1>
           <p className="text-sm text-text-muted mt-1">
-            Upcoming trade shows, missions, and export events
+            {events.length} upcoming trade shows, missions, and export events
           </p>
         </div>
 
@@ -213,7 +222,7 @@ export default function TradeEventsPage() {
               <Star className="w-4 h-4 text-accent" />
               <h2 className="text-sm font-medium text-text-primary">Recommended for You</h2>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               {recommendedEvents.map((event) => (
                 <a
                   key={event.id}
