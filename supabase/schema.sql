@@ -184,3 +184,108 @@ create policy "Users manage own connections" on integration_connections
 create trigger integration_connections_updated_at
   before update on integration_connections
   for each row execute function update_updated_at();
+
+-- ────────────────────────────────────────
+-- Trade Events Directory
+-- ────────────────────────────────────────
+create table if not exists trade_events (
+  id uuid primary key default uuid_generate_v4(),
+  external_id text unique not null, -- dedup key, e.g. 'curated-c-imts', '10times-xyz'
+  name text not null,
+  description text not null default '',
+  start_date date not null,
+  end_date date,
+  location text not null default '',
+  city text not null default '',
+  country text not null default '',
+  region text not null default '',
+  industries text[] not null default '{}',
+  url text not null default '',
+  registration_url text,
+  source text not null default '',
+  cost text,
+  venue text,
+  organizer text,
+  attendee_count text, -- display string like '100,000+'
+  exhibitor_count text,
+  is_featured boolean not null default false,
+  is_verified boolean not null default false,
+  search_vector tsvector,
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null
+);
+
+-- Full-text search trigger
+create or replace function trade_events_search_trigger()
+returns trigger as $$
+begin
+  new.search_vector :=
+    setweight(to_tsvector('english', coalesce(new.name, '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(new.description, '') || ' ' || coalesce(array_to_string(new.industries, ' '), '')), 'B') ||
+    setweight(to_tsvector('english', coalesce(new.location, '') || ' ' || coalesce(new.city, '') || ' ' || coalesce(new.country, '') || ' ' || coalesce(new.region, '')), 'C');
+  new.updated_at := now();
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger trade_events_search_update
+  before insert or update on trade_events
+  for each row execute function trade_events_search_trigger();
+
+-- Indexes
+create index if not exists idx_trade_events_search on trade_events using gin(search_vector);
+create index if not exists idx_trade_events_start_date on trade_events(start_date);
+create index if not exists idx_trade_events_country on trade_events(country);
+create index if not exists idx_trade_events_region on trade_events(region);
+create index if not exists idx_trade_events_industries on trade_events using gin(industries);
+
+-- RLS: SELECT open to all authenticated, mutations restricted to service_role
+alter table trade_events enable row level security;
+create policy "Anyone can read trade events" on trade_events
+  for select using (true);
+
+-- ────────────────────────────────────────
+-- User Bookmarked Events
+-- ────────────────────────────────────────
+create table if not exists user_bookmarked_events (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  event_id uuid references trade_events(id) on delete cascade not null,
+  created_at timestamptz default now() not null,
+  unique(user_id, event_id)
+);
+
+alter table user_bookmarked_events enable row level security;
+create policy "Users manage own bookmarks" on user_bookmarked_events
+  for all using (auth.uid() = user_id);
+
+create index if not exists idx_bookmarked_events_user on user_bookmarked_events(user_id);
+
+-- ────────────────────────────────────────
+-- Filter helper function
+-- ────────────────────────────────────────
+create or replace function get_trade_event_filters()
+returns json as $$
+  select json_build_object(
+    'industries', (
+      select array_agg(distinct unnested order by unnested)
+      from trade_events, unnest(industries) as unnested
+      where start_date >= current_date
+    ),
+    'countries', (
+      select array_agg(distinct country order by country)
+      from trade_events
+      where country != '' and start_date >= current_date
+    ),
+    'regions', (
+      select array_agg(distinct region order by region)
+      from trade_events
+      where region != '' and start_date >= current_date
+    ),
+    'sources', (
+      select array_agg(distinct source order by source)
+      from trade_events
+      where source != '' and start_date >= current_date
+    )
+  );
+$$ language sql stable;

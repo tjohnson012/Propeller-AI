@@ -27,6 +27,26 @@ let eventsCache: { data: TradeEvent[]; ts: number } | null = null;
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
 /**
+ * Map a Supabase trade_events row to the TradeEvent interface.
+ */
+export function mapDbRowToTradeEvent(row: Record<string, unknown>): TradeEvent {
+  return {
+    id: (row.id as string) || (row.external_id as string) || "",
+    name: (row.name as string) || "",
+    description: (row.description as string) || "",
+    startDate: (row.start_date as string) || "",
+    endDate: (row.end_date as string) || undefined,
+    location: (row.location as string) || "",
+    country: (row.country as string) || "",
+    industries: (row.industries as string[]) || [],
+    url: (row.url as string) || "",
+    registrationUrl: (row.registration_url as string) || undefined,
+    source: (row.source as string) || "",
+    cost: (row.cost as string) || undefined,
+  };
+}
+
+/**
  * Parse USTDA RSS feed for trade events.
  */
 async function fetchUSTDAEvents(): Promise<TradeEvent[]> {
@@ -152,6 +172,7 @@ async function fetchITAEvents(
 
 /**
  * Get upcoming trade events filtered by industry and/or target countries.
+ * Tries Supabase DB first for richer results, falls back to live API calls.
  */
 export async function getTradeEvents(
   options: {
@@ -162,7 +183,15 @@ export async function getTradeEvents(
 ): Promise<TradeEvent[]> {
   const { industries, countries, maxResults = 20 } = options;
 
-  // Check cache for unfiltered results
+  // Try Supabase DB first
+  try {
+    const dbEvents = await getTradeEventsFromDB(industries, countries, maxResults);
+    if (dbEvents.length > 0) return dbEvents;
+  } catch {
+    // Fall through to live API
+  }
+
+  // Fallback: live API calls
   if (!eventsCache || Date.now() - eventsCache.ts > CACHE_TTL) {
     const [ustdaEvents, itaEvents] = await Promise.allSettled([
       fetchUSTDAEvents(),
@@ -206,6 +235,41 @@ export async function getTradeEvents(
   });
 
   return events.slice(0, maxResults);
+}
+
+/**
+ * Query Supabase trade_events table with filters.
+ */
+async function getTradeEventsFromDB(
+  industries?: string[],
+  countries?: string[],
+  maxResults: number = 20,
+): Promise<TradeEvent[]> {
+  const { createServiceSupabase } = await import("@/lib/supabase/service");
+  const supabase = createServiceSupabase();
+  if (!supabase) return [];
+
+  let query = supabase
+    .from("trade_events")
+    .select("*")
+    .gte("start_date", new Date().toISOString().split("T")[0])
+    .order("start_date", { ascending: true })
+    .limit(maxResults);
+
+  if (industries?.length) {
+    // Use text search for broader matching
+    const searchTerms = industries.join(" | ");
+    query = query.textSearch("search_vector", searchTerms, { type: "websearch" });
+  }
+
+  if (countries?.length) {
+    query = query.in("country", countries);
+  }
+
+  const { data, error } = await query;
+  if (error || !data) return [];
+
+  return data.map(mapDbRowToTradeEvent);
 }
 
 /**

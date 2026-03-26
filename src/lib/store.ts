@@ -126,6 +126,11 @@ interface AppStore {
   unreadAlertCount: number;
   setUnreadAlertCount: (count: number) => void;
 
+  // Trade event bookmarks
+  tradeEventsBookmarks: Set<string>;
+  setBookmarks: (ids: Set<string>) => void;
+  toggleBookmark: (id: string) => void;
+
   // Tour
   tourLockSidebar: boolean;
   setTourLockSidebar: (v: boolean) => void;
@@ -201,6 +206,17 @@ export const useAppStore = create<AppStore>((set) => ({
   setMonitoringAlerts: (alerts) => set({ monitoringAlerts: alerts }),
   unreadAlertCount: 0,
   setUnreadAlertCount: (count) => set({ unreadAlertCount: count }),
+
+  // Trade event bookmarks
+  tradeEventsBookmarks: new Set<string>(),
+  setBookmarks: (ids) => set({ tradeEventsBookmarks: ids }),
+  toggleBookmark: (id) =>
+    set((s) => {
+      const next = new Set(s.tradeEventsBookmarks);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { tradeEventsBookmarks: next };
+    }),
 
   // Tour
   tourLockSidebar: false,
