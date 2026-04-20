@@ -17,7 +17,7 @@
 
 import { searchHSCodes } from "@/lib/data/hts";
 import { getTradeFlows, formatTradeValue } from "@/lib/data/comtrade";
-import { screenEntity, loadSDNList } from "@/lib/data/ofac";
+import { screenEntity, loadSDNList, getCSLLoadStatus } from "@/lib/data/ofac";
 import { searchCrossRulings, formatRulingsForReport } from "@/lib/data/cross-rulings";
 import { getCountryGuide, getGuideContextForPipeline, formatGuideForReport } from "@/lib/data/country-guides";
 import { getTradeEvents, getMajorTradeShows, formatTradeEventsForReport } from "@/lib/data/trade-events";
@@ -44,7 +44,6 @@ export async function runPipeline(
   emit: Emit,
 ): Promise<void> {
   const { companyName, product, targetCountries } = input;
-  const timestamp = new Date().toISOString().slice(0, 10);
 
   // ────────────────────────────────────────────
   // STEP 1: HS Code Classification + CBP Rulings
@@ -107,7 +106,7 @@ export async function runPipeline(
   // ────────────────────────────────────────────
   emit({ type: "step-start", step: "trade", label: "Querying trade flow databases...", progress: 15 });
 
-  const tradeFlows: Array<{ hsCode: string; partners: TradePartner[]; totalValue: number }> = [];
+  const tradeFlows: Array<{ hsCode: string; partners: TradePartner[]; totalValue: number; isFallback: boolean; fallbackReason?: string }> = [];
   const primaryHS = hsCodes[0]?.code || "7325";
   const primaryCountry = targetCountries[0] || "Canada";
 
@@ -119,7 +118,13 @@ export async function runPipeline(
   ]);
 
   if (comtradeResult.status === "fulfilled") {
-    tradeFlows.push({ hsCode: primaryHS, partners: comtradeResult.value.partners, totalValue: comtradeResult.value.totalValue });
+    tradeFlows.push({
+      hsCode: primaryHS,
+      partners: comtradeResult.value.partners,
+      totalValue: comtradeResult.value.totalValue,
+      isFallback: comtradeResult.value.isFallback,
+      fallbackReason: comtradeResult.value.fallbackReason,
+    });
   }
   if (censusResult.status === "fulfilled") {
     censusFlows = censusResult.value;
@@ -137,10 +142,13 @@ export async function runPipeline(
     const targetData = tradeFlows[0].partners.filter((p) =>
       targetCountries.some((tc) => p.country.toLowerCase().includes(tc.toLowerCase())),
     );
+    const isEstimate = tradeFlows[0].isFallback;
 
     let tradeMsg = `**Global Trade Flows for HS ${primaryHS}**\n`;
-    tradeMsg += `*Source: [UN Comtrade Database](https://comtradeplus.un.org/) — 2023 import data*\n\n`;
-    tradeMsg += `Total global imports: ${formatTradeValue(tradeFlows[0].totalValue)}\n\n`;
+    tradeMsg += isEstimate
+      ? `*Source: Reference estimate — live [UN Comtrade](https://comtradeplus.un.org/) query unavailable (${tradeFlows[0].fallbackReason ?? "no live data"}). Figures below are directional, not authoritative.*\n\n`
+      : `*Source: [UN Comtrade Database](https://comtradeplus.un.org/) — 2023 import data*\n\n`;
+    tradeMsg += `Total global imports: ${formatTradeValue(tradeFlows[0].totalValue)}${isEstimate ? " *(estimate)*" : ""}\n\n`;
     tradeMsg += `| Rank | Country | Import Value | Share |\n|------|---------|-------------|-------|\n`;
     top.forEach((p, i) => {
       const isTarget = targetCountries.some((tc) => p.country.toLowerCase().includes(tc.toLowerCase()));
@@ -168,79 +176,83 @@ export async function runPipeline(
   }
 
   // ────────────────────────────────────────────
-  // STEP 3: Compliance Screening
+  // STEP 3: Jurisdiction Risk Check
   // ────────────────────────────────────────────
-  // Screen trade partners in target countries, NOT the user's own company.
-  // The user's company is the exporter — we screen their potential buyers/partners.
-  emit({ type: "step-start", step: "screen", label: "Screening trade partners in target markets...", progress: 35 });
+  // NOTE: We do NOT know the user's actual buyers at pipeline time, so we do not
+  // claim to have screened them. We do two honest things:
+  //   1. Check whether each target-market *country* appears on a country-wide
+  //      sanctions program (Cuba, Iran, N. Korea, Syria, etc.).
+  //   2. Load the Consolidated Screening List so the Compliance tab is ready
+  //      to screen named buyers the moment the user enters them.
+  emit({ type: "step-start", step: "screen", label: "Checking jurisdiction risk for target markets...", progress: 35 });
 
   await loadSDNList();
+  const cslStatus = getCSLLoadStatus();
 
-  // Screen top trade partners from Comtrade data (real importers in target markets)
-  const partnersToScreen: string[] = [];
-  if (tradeFlows.length > 0 && tradeFlows[0].partners.length > 0) {
-    for (const partner of tradeFlows[0].partners.slice(0, 5)) {
-      if (partner.country && partner.country !== "World") {
-        partnersToScreen.push(partner.country);
-      }
-    }
+  // Country-level program check (distinct from entity screening)
+  const sanctionedPrograms: Record<string, string> = {
+    cuba: "Cuba — comprehensive OFAC sanctions (31 CFR 515)",
+    iran: "Iran — comprehensive OFAC sanctions (31 CFR 560)",
+    "north korea": "North Korea — comprehensive OFAC sanctions (31 CFR 510)",
+    syria: "Syria — comprehensive OFAC sanctions (31 CFR 542)",
+    russia: "Russia — broad sectoral sanctions (EO 14024, BIS export controls)",
+    belarus: "Belarus — broad sectoral sanctions (EO 14038)",
+    venezuela: "Venezuela — targeted sanctions on state-owned enterprises",
+    myanmar: "Myanmar — targeted sanctions (EO 14014)",
+    burma: "Myanmar — targeted sanctions (EO 14014)",
+  };
+  const jurisdictionRisks: Array<{ country: string; notes: string }> = [];
+  for (const target of targetCountries) {
+    const key = target.toLowerCase().trim();
+    const hit = Object.entries(sanctionedPrograms).find(([k]) => key.includes(k));
+    if (hit) jurisdictionRisks.push({ country: target, notes: hit[1] });
   }
-  // Fallback: screen target countries as entities if no trade partners found
-  if (partnersToScreen.length === 0) {
-    partnersToScreen.push(...targetCountries.slice(0, 3));
-  }
 
-  const screeningResults = await Promise.all(
-    partnersToScreen.map((partner) => screenEntity(partner)),
-  );
-  const flaggedResults = screeningResults.filter((r) => r.matched);
-  const totalMatches = flaggedResults.reduce((sum, r) => sum + r.matches.length, 0);
-  const listsCount = screeningResults[0]?.listsChecked.length ?? 13;
-
-  // Use first result for downstream compatibility
-  const screeningResult = screeningResults[0] ?? await screenEntity(companyName);
-  const matchCount = totalMatches;
+  // We also keep a single representative screening result (company name) so the
+  // downstream compliance report has a concrete object to reference. This is
+  // explicitly labeled below.
+  const screeningResult = await screenEntity(companyName);
+  const matchCount = screeningResult.matched ? screeningResult.matches.length : 0;
+  const listsCount = screeningResult.listsChecked.length;
 
   emit({
     type: "step-done",
     step: "screen",
-    label: totalMatches > 0 ? "FLAGGED — matches found" : `CLEAR — ${partnersToScreen.length} partners screened`,
+    label: jurisdictionRisks.length > 0
+      ? `⚠️ ${jurisdictionRisks.length} target market(s) under sanctions programs`
+      : `Target markets clear of country-wide sanctions programs`,
     progress: 45,
   });
 
-  let screenMsg = totalMatches > 0
-    ? `**Trade Partner Screening: FLAGGED**\n\n`
-    : `**Trade Partner Screening: CLEAR**\n\n`;
-  screenMsg += `*Source: [U.S. Consolidated Screening List](https://www.trade.gov/consolidated-screening-list) — ${listsCount} federal lists, 25,000+ entities*\n\n`;
+  let screenMsg = `**Jurisdiction Risk Check**\n\n`;
+  screenMsg += `*Data: [U.S. Consolidated Screening List](https://www.trade.gov/consolidated-screening-list) — ${listsCount} federal lists, `;
+  screenMsg += cslStatus.source === "fallback"
+    ? `⚠️ offline sample only (${cslStatus.entries} entries) — live CSL fetch failed*\n\n`
+    : `${cslStatus.entries.toLocaleString()} entities ${cslStatus.source === "cached" ? "(cached)" : "(live)"}*\n\n`;
 
-  if (totalMatches > 0) {
-    screenMsg += `⚠️ Potential matches found:\n\n`;
-    for (const result of flaggedResults) {
-      screenMsg += result.matches.slice(0, 3).map((m) =>
-        `- **${m.entry.name}** (${Math.round(m.score * 100)}% match) — ${m.entry.sourceList}`
-      ).join("\n");
-    }
-    screenMsg += `\n\n*Manual review recommended before proceeding.*`;
+  if (jurisdictionRisks.length > 0) {
+    screenMsg += `⚠️ **Target markets under active U.S. sanctions programs:**\n`;
+    screenMsg += jurisdictionRisks.map((r) => `- **${r.country}** — ${r.notes}`).join("\n");
+    screenMsg += `\n\nTransactions with entities in these jurisdictions may require OFAC licensing or be prohibited. Consult export counsel before proceeding.\n\n`;
   } else {
-    screenMsg += `✓ Screened ${partnersToScreen.length} trade partner(s): ${partnersToScreen.join(", ")}\n\n`;
-    screenMsg += `No matches found across ${listsCount} federal screening lists (OFAC SDN, BIS Entity List, BIS Denied Persons, BIS Unverified, ITAR Debarred, and more).\n\n`;
-    screenMsg += `*Screen specific buyers or suppliers by name in the Compliance tab.*`;
+    screenMsg += `✓ None of your target markets (${targetCountries.join(", ")}) are subject to comprehensive U.S. sanctions programs.\n\n`;
   }
+
+  screenMsg += `**Entity screening is a separate step.** When you have specific buyer, consignee, or end-user names, run them through the Compliance dashboard — we'll screen each one against all ${listsCount} federal lists in real time.`;
 
   emit({ type: "message", agentId: "compliance", text: screenMsg });
 
-  // Offer to add trade partners to watchlist for ongoing monitoring
-  const watchlistEntity = partnersToScreen[0] || companyName;
+  // Invite the user to add real entities they know about
   emit({
     type: "message",
     agentId: "compliance",
-    text: `Add your trade partners to the compliance watchlist for daily automated re-screening against the Consolidated Screening List.`,
+    text: `Add a specific buyer, consignee, or supplier to your compliance watchlist to receive daily automated re-screening.`,
     actionCard: {
       type: "watchlist-add",
-      title: `Add trade partners to compliance watchlist`,
+      title: `Add a counterparty to the compliance watchlist`,
       status: "pending",
       metadata: {
-        entity: watchlistEntity,
+        entity: "",
         type: "buyer",
         country: primaryCountry,
       },
@@ -386,7 +398,7 @@ export async function runPipeline(
   emit({
     type: "message",
     agentId: "outreach",
-    text: `**Buyer Outreach**\n\nDrafted outreach emails for ${primaryCountry} buyers with country-specific formality and cultural notes${countryGuide ? " from the Trade.gov Country Commercial Guide" : ""}. Includes follow-up schedule and talking points.\n\nView the full package in the artifact panel.`,
+    text: `**Outreach Templates Ready**\n\nWe prepared introduction and follow-up email templates tuned for ${primaryCountry} business culture${countryGuide ? " using the Trade.gov Country Commercial Guide" : ""}, plus a 30-day follow-up cadence and sales talking points.\n\n> **These are templates, not leads.** Propeller doesn't have a list of verified ${primaryCountry} buyers for your product. To send these, bring your own recipient list (trade-show contacts, importer directories, LinkedIn prospecting) and paste names into the Outreach tab — we'll personalize and track them.\n\nOpen the artifact panel to review.`,
   });
 
   // ────────────────────────────────────────────
@@ -394,14 +406,25 @@ export async function runPipeline(
   // ────────────────────────────────────────────
   emit({ type: "step-start", step: "finance", label: "Preparing financial analysis...", progress: 88 });
 
-  const financeReport = generateFinanceReport(companyName, product, primaryHS, primaryCountry, targetCountries, ftaInfo, hsCodes);
+  const financeReport = generateFinanceReport(companyName, product, primaryHS, primaryCountry, targetCountries, ftaInfo, hsCodes, tariffRates);
 
   emit({ type: "step-done", step: "finance", label: "Financial analysis complete", progress: 92 });
+
+  const mfnRate = tariffRates.find((r) => r.mfnRate)?.mfnRate;
+  const prefRate = tariffRates.find((r) => r.preferentialRate);
+  const rateLine = mfnRate
+    ? `**MFN Rate (${primaryCountry}):** ${mfnRate} *(source: World Bank WITS)*`
+    : `**MFN Rate (${primaryCountry}):** not retrieved — look up HS ${primaryHS} on [USITC HTS](https://hts.usitc.gov/)`;
+  const prefLine = prefRate
+    ? `\n- **${prefRate.ftaName} Preferential Rate:** ${prefRate.preferentialRate} *(if rules of origin are met)*`
+    : ftaInfo.eligible
+      ? `\n- **${ftaInfo.agreement}:** potential preferential rate — verify RoO for this HS line`
+      : `\n- **FTA:** none applicable for ${primaryCountry}`;
 
   emit({
     type: "message",
     agentId: "finance",
-    text: `**Export Finance**\n\n- **Recommended Payment Terms:** Letter of Credit at sight for new ${primaryCountry} buyers\n- **Estimated Duty Rate:** ${hsCodes[0]?.generalDutyRate || "2.9%"}\n- **FTA Status:** ${ftaInfo.eligible ? ftaInfo.agreement : "No applicable FTA"}\n\n*Sources: [SBA STEP Program](https://www.sba.gov/funding-programs/grants/state-trade-expansion-program-step), [Ex-Im Bank](https://www.exim.gov/)*\n\nView the full financial analysis in the artifact panel.`,
+    text: `**Export Finance**\n\n- **Recommended Payment Terms:** Letter of Credit at sight for new ${primaryCountry} buyers *([AI Analysis])*\n- ${rateLine}${prefLine}\n\n*Sources: [SBA STEP Program](https://www.sba.gov/funding-programs/grants/state-trade-expansion-program-step), [Ex-Im Bank](https://www.exim.gov/)*\n\nView the full financial analysis in the artifact panel.`,
   });
 
   // ────────────────────────────────────────────
@@ -468,41 +491,49 @@ function getExportControlInfo(
   };
 }
 
-/* ── Helper: FTA Lookup ── */
+/* ── Helper: FTA Lookup ──
+ *
+ * Reports only whether a US FTA exists with the destination. It does NOT
+ * claim duty-free eligibility for a given HS code, because eligibility
+ * depends on rules of origin that vary by tariff line (e.g. USMCA RVC
+ * thresholds, regional yarn-forward rules, etc.). Real preferential rates
+ * come from `getTariffRates` which queries trade.gov.
+ */
 function getFTAInfo(
-  hsCode: string,
+  _hsCode: string,
   destination: string,
 ): { eligible: boolean; agreement: string; savings: string } {
   const dest = destination.toLowerCase();
-  // Source for all FTA data: USTR.gov Free Trade Agreements page
+  const rooNote = "Preferential rate depends on rules of origin for the specific HS line — verify in the Finance tab.";
+
   if (dest.includes("canada") || dest.includes("mexico"))
-    return { eligible: true, agreement: "USMCA (US-Mexico-Canada Agreement)", savings: "Duty-free under USMCA for qualifying goods" };
+    return { eligible: true, agreement: "USMCA", savings: rooNote };
   if (dest.includes("australia"))
-    return { eligible: true, agreement: "AUSFTA (Australia FTA)", savings: "Most industrial goods duty-free" };
+    return { eligible: true, agreement: "US-Australia FTA", savings: rooNote };
   if (dest.includes("south korea") || dest.includes("korea"))
-    return { eligible: true, agreement: "KORUS (Korea FTA)", savings: "Reduced or zero duty on most manufactured goods" };
+    return { eligible: true, agreement: "KORUS", savings: rooNote };
   if (dest.includes("colombia"))
-    return { eligible: true, agreement: "US-Colombia TPA", savings: "Reduced duties on industrial goods" };
+    return { eligible: true, agreement: "US-Colombia TPA", savings: rooNote };
   if (dest.includes("chile"))
-    return { eligible: true, agreement: "US-Chile FTA", savings: "Most goods duty-free" };
+    return { eligible: true, agreement: "US-Chile FTA", savings: rooNote };
   if (dest.includes("peru"))
-    return { eligible: true, agreement: "US-Peru TPA", savings: "Reduced duties on industrial goods" };
+    return { eligible: true, agreement: "US-Peru TPA", savings: rooNote };
   if (dest.includes("singapore"))
-    return { eligible: true, agreement: "US-Singapore FTA", savings: "Most goods duty-free" };
+    return { eligible: true, agreement: "US-Singapore FTA", savings: rooNote };
   if (dest.includes("israel"))
-    return { eligible: true, agreement: "US-Israel FTA", savings: "Duty-free on most industrial goods" };
+    return { eligible: true, agreement: "US-Israel FTA", savings: rooNote };
   if (dest.includes("jordan"))
-    return { eligible: true, agreement: "US-Jordan FTA", savings: "Reduced duties on qualifying goods" };
+    return { eligible: true, agreement: "US-Jordan FTA", savings: rooNote };
   if (dest.includes("bahrain"))
-    return { eligible: true, agreement: "US-Bahrain FTA", savings: "Reduced duties on qualifying goods" };
+    return { eligible: true, agreement: "US-Bahrain FTA", savings: rooNote };
   if (dest.includes("oman"))
-    return { eligible: true, agreement: "US-Oman FTA", savings: "Reduced duties on qualifying goods" };
+    return { eligible: true, agreement: "US-Oman FTA", savings: rooNote };
   if (dest.includes("morocco"))
-    return { eligible: true, agreement: "US-Morocco FTA", savings: "Reduced duties on qualifying goods" };
+    return { eligible: true, agreement: "US-Morocco FTA", savings: rooNote };
   if (dest.includes("panama"))
-    return { eligible: true, agreement: "US-Panama TPA", savings: "Reduced duties on qualifying goods" };
+    return { eligible: true, agreement: "US-Panama TPA", savings: rooNote };
   if (dest.includes("dominican republic") || dest.includes("costa rica") || dest.includes("el salvador") || dest.includes("guatemala") || dest.includes("honduras") || dest.includes("nicaragua"))
-    return { eligible: true, agreement: "CAFTA-DR", savings: "Reduced or zero duty on qualifying goods" };
+    return { eligible: true, agreement: "CAFTA-DR", savings: rooNote };
 
   return { eligible: false, agreement: "", savings: "" };
 }
@@ -513,7 +544,7 @@ async function synthesizeFindings(data: {
   product: string;
   targetCountries: string[];
   hsCodes: HSCodeSuggestion[];
-  tradeFlows: Array<{ hsCode: string; partners: TradePartner[]; totalValue: number }>;
+  tradeFlows: Array<{ hsCode: string; partners: TradePartner[]; totalValue: number; isFallback: boolean; fallbackReason?: string }>;
   screening: { status: string; details: string };
   exportControls: { eccn: string; licenseRequired: boolean; notes: string };
   ftaInfo: { eligible: boolean; agreement: string; savings: string };
@@ -588,49 +619,60 @@ async function synthesizeFindings(data: {
     });
   }
 
-  const prompt = `You are a senior export trade advisor — not a report generator. You're briefing ${data.companyName}'s leadership on their export opportunity. Be direct, specific, and opinionated. Use "you" and "your." Don't hedge with "may" or "could" when the data supports a clear recommendation.
+  const tradeFlowIsEstimate = data.tradeFlows[0]?.isFallback === true;
+  const tradeFlowLabel = tradeFlowIsEstimate
+    ? `⚠ REFERENCE ESTIMATE — not live Comtrade data (${data.tradeFlows[0].fallbackReason ?? "live query failed"}). Treat figures as directional only and say so.`
+    : `[Source: UN Comtrade 2023]`;
 
-IMPORTANT: Every factual claim MUST cite its source in brackets. Use these formats:
-- [Source: UN Comtrade 2023] for trade data
-- [Source: USITC HTS] for HS codes
-- [Source: U.S. Consolidated Screening List] for compliance
-- [Source: Trade.gov Country Commercial Guide — {Country}] for country intelligence
-- [Source: CBP Ruling {number}] for classification rulings
-- [Source: BIS EAR] for export controls
-- [Source: U.S. Census Bureau International Trade] for US-specific trade statistics
-- [Source: Trade.gov FTA Tariff Rates] for preferential tariff rates
-- [Source: World Bank WITS] for MFN tariff rates
-- [Source: Federal Register] for regulatory updates
-- [AI Analysis] for your own conclusions and recommendations
+  const prompt = `You are a senior export trade advisor briefing ${data.companyName}'s leadership. Direct, specific, opinionated. Use "you" and "your."
+
+GROUNDING RULES (strict):
+1. Every factual claim MUST include a source tag in brackets. Allowed tags:
+   - [Source: UN Comtrade 2023] — only when the data below is NOT labeled "⚠ REFERENCE ESTIMATE"
+   - [Source: USITC HTS] for HS codes
+   - [Source: U.S. Consolidated Screening List] for compliance
+   - [Source: Trade.gov Country Commercial Guide — {Country}] for country intelligence
+   - [Source: CBP Ruling {number}] for classification rulings
+   - [Source: BIS EAR] for export controls
+   - [Source: U.S. Census Bureau International Trade] for US-specific trade stats
+   - [Source: Trade.gov FTA Tariff Rates] for preferential rates
+   - [Source: World Bank WITS] for MFN rates
+   - [Source: Federal Register] for regulatory updates
+   - [AI Analysis] for your own recommendations / inferences
+2. If a data section is marked "⚠ REFERENCE ESTIMATE" or "⚠ DATA UNAVAILABLE," you MUST either (a) skip it entirely or (b) say "directional estimate — verify with live Comtrade" and refuse to cite it as [Source: UN Comtrade 2023].
+3. NEVER invent specific numbers, company names, buyer contacts, or tariff rates that aren't in the data below. If a rate isn't given, say "rate not retrieved — check USITC HTS."
+4. NEVER claim trade shows or events exist that aren't listed below.
+5. When the FTA row says "RoO-dependent," do NOT claim "duty-free." Say "potentially duty-free if rules of origin are met — verify in Finance tab."
 
 PRODUCT: ${data.product}
 HS CODES: ${data.hsCodes.map((h) => `${h.code} (${h.description})`).join(", ")}
 TARGET MARKETS: ${data.targetCountries.join(", ")}
 
+TRADE FLOWS — ${tradeFlowLabel}
 TOP GLOBAL IMPORTERS:
-${topMarkets.map((p, i) => `${i + 1}. ${p.country}: ${formatTradeValue(p.tradeValue)} (${p.share}%)`).join("\n")}
+${topMarkets.length > 0 ? topMarkets.map((p, i) => `${i + 1}. ${p.country}: ${formatTradeValue(p.tradeValue)} (${p.share}%)`).join("\n") : "⚠ DATA UNAVAILABLE — no trade flow data retrieved"}
 
 TARGET MARKET DATA:
-${targetData.map((p) => `- ${p.country}: ${formatTradeValue(p.tradeValue)} imports (${p.share}% share)`).join("\n") || "Limited data for target markets"}
+${targetData.length > 0 ? targetData.map((p) => `- ${p.country}: ${formatTradeValue(p.tradeValue)} imports (${p.share}% share)`).join("\n") : "⚠ DATA UNAVAILABLE for target markets — say so if you reference them"}
 
 COMPLIANCE: ${data.screening.status} | ECCN: ${data.exportControls.eccn} | License Required: ${data.exportControls.licenseRequired ? "Yes" : "No"}
 END-USE RISK: ${data.endUseAssessment.riskLevel.toUpperCase()} ${data.endUseAssessment.flags.length > 0 ? "— " + data.endUseAssessment.flags.map(f => f.description).join("; ") : ""}
-FTA: ${data.ftaInfo.eligible ? data.ftaInfo.agreement + " — " + data.ftaInfo.savings : "No applicable FTA for primary target"}
+FTA: ${data.ftaInfo.eligible ? `${data.ftaInfo.agreement} exists (RoO-dependent — verify for this HS line)` : "No applicable FTA for primary target"}
 ${countryContext}${rulingsContext}${censusContext}${tariffContext}${regContext}${eventsContext}
 
-Write in this format:
+Format:
 
 ## Executive Summary
-[2-3 paragraphs. Talk TO the client like an advisor. Be specific — use real numbers, real country names, real trade show dates. Don't just summarize the data — interpret it. What does this mean for THEIR business?]
+[2–3 paragraphs. Address the client directly. Use specific figures from above. If trade-flow data is directional, say so plainly.]
 
 ## Recommendations
-1. [Be specific. "Attend Hannover Messe April 20-24" not "consider attending trade shows"]
+1. [Specific action tied to the data above. If a specific trade show is listed, name it with its date. Do NOT invent shows.]
 2. ...
 
-## Next Steps in Export Journey
-[3-4 concrete, time-bound next steps. Not generic advice — specific actions based on the data.]
+## Next Steps
+[3–4 concrete, time-bound steps grounded in what was actually retrieved. No generic boilerplate.]
 
-Be bold. Use the actual trade values. Reference specific trade shows by name and date. If the Country Commercial Guide says something important about market entry, cite it. No fluff, no filler.`;
+No fluff. No filler. No invented facts.`;
 
   const response = await client.messages.create({
     model: MODEL,
@@ -650,31 +692,34 @@ function getTemplateSynthesis(
   product: string,
   targetCountries: string[],
   hsCodes: HSCodeSuggestion[],
-  tradeFlows: Array<{ hsCode: string; partners: TradePartner[]; totalValue: number }>,
+  tradeFlows: Array<{ hsCode: string; partners: TradePartner[]; totalValue: number; isFallback: boolean }>,
   primaryCountry: string,
 ): string {
   const topPartners = tradeFlows[0]?.partners.slice(0, 5) || [];
   const primaryHS = hsCodes[0]?.code || "N/A";
+  const flowIsEstimate = tradeFlows[0]?.isFallback === true;
+  const flowCitation = flowIsEstimate ? "[reference estimate — not live Comtrade]" : "[Source: UN Comtrade 2023]";
+  const fta = getFTAInfo(primaryHS, primaryCountry);
 
   return `## Executive Summary
 
-Based on analysis of global trade flows for HS ${primaryHS} (${hsCodes[0]?.description || product}), the total global import market is valued at ${tradeFlows[0] ? formatTradeValue(tradeFlows[0].totalValue) : "significant"} [Source: UN Comtrade 2023].
+Based on trade flows for HS ${primaryHS} (${hsCodes[0]?.description || product}), the global import market is valued at ${tradeFlows[0] ? formatTradeValue(tradeFlows[0].totalValue) : "an undetermined amount"} ${flowCitation}.
 
-${companyName}'s target markets (${targetCountries.join(", ")}) represent meaningful import demand. ${topPartners[0] ? `${topPartners[0].country} leads global imports at ${formatTradeValue(topPartners[0].tradeValue)} (${topPartners[0].share}% market share) [Source: UN Comtrade 2023].` : ""}
+${companyName}'s target markets (${targetCountries.join(", ")}) represent meaningful demand. ${topPartners[0] ? `${topPartners[0].country} leads with ${formatTradeValue(topPartners[0].tradeValue)} (${topPartners[0].share}% share) ${flowCitation}.` : ""}${flowIsEstimate ? "\n\n> Live Comtrade was unavailable for this run — figures above are a directional reference only. Re-run when the API is reachable for authoritative numbers." : ""}
 
 ## Recommendations
 
-1. **Start with ${primaryCountry}** — ${getFTAInfo(primaryHS, primaryCountry).eligible ? `${getFTAInfo(primaryHS, primaryCountry).agreement} provides duty-free access [Source: USTR.gov]` : "Strong import demand with established distribution networks [Source: UN Comtrade 2023]"}.
+1. **Start with ${primaryCountry}** — ${fta.eligible ? `${fta.agreement} may provide preferential tariff treatment if rules of origin are met for HS ${primaryHS} [Source: USTR.gov]. Verify with the Finance tab.` : "No US FTA applies. Expect MFN tariff treatment — see Finance tab for the live rate."}
 2. **Leverage HS ${primaryHS}** classification for customs documentation [Source: USITC HTS].
 3. **Use Letters of Credit** for initial transactions with new buyers [AI Analysis].
-4. **Apply for SBA STEP grants** — up to $15,000 reimbursement for trade show attendance and market entry costs [Source: SBA.gov STEP Program].
+4. **Apply for SBA STEP grants** — your state's program reimburses eligible export development costs; contact your state SBDC for current amounts [Source: SBA.gov STEP Program].
 
-## Next Steps in Export Journey
+## Next Steps
 
-1. Register on export.gov and connect with your local SBDC export advisor
-2. Attend a relevant trade show in your primary target market within the next 6 months
-3. Obtain necessary certifications for the target market
-4. Set up international payment infrastructure with your bank`;
+1. Register on export.gov and connect with your local SBDC export advisor.
+2. Identify a specific trade show in ${primaryCountry} within the next 6 months (see the Trade Shows tab).
+3. Obtain certifications the target market requires (check the Country Commercial Guide).
+4. Set up LC-capable international payment infrastructure with your bank.`;
 }
 
 /* ── Report Generators (all source-cited) ── */
@@ -683,7 +728,7 @@ function generateMarketReport(
   companyName: string,
   product: string,
   hsCodes: HSCodeSuggestion[],
-  tradeFlows: Array<{ hsCode: string; partners: TradePartner[]; totalValue: number }>,
+  tradeFlows: Array<{ hsCode: string; partners: TradePartner[]; totalValue: number; isFallback: boolean; fallbackReason?: string }>,
   targetCountries: string[],
   synthesis: string,
   crossRulings: CrossRuling[],
@@ -738,7 +783,9 @@ ${formatRulingsForReport(crossRulings)}
 
 ## Top Importing Countries
 
-*Source: [UN Comtrade Database](https://comtradeplus.un.org/) — 2023 data*
+${tradeFlows[0]?.isFallback
+  ? `*⚠ Reference estimate — live [UN Comtrade](https://comtradeplus.un.org/) query unavailable (${tradeFlows[0].fallbackReason ?? "no live data"}). Figures below are directional, not authoritative. Re-run when the API is reachable.*`
+  : `*Source: [UN Comtrade Database](https://comtradeplus.un.org/) — 2023 data*`}
 
 | Rank | Country | Import Value | Market Share |
 |------|---------|-------------|-------------|
@@ -778,7 +825,7 @@ function generateComplianceReport(
   const timestamp = new Date().toISOString().slice(0, 10);
   const status = screening.matchCount > 0 ? "FLAGGED" : "CLEAR";
 
-  let report = `# Compliance & End-Use Screening Report
+  const report = `# Compliance & End-Use Screening Report
 
 **Report ID:** ${reportId}
 **Generated:** ${timestamp}
@@ -1003,10 +1050,14 @@ function generateFinanceReport(
   targetCountries: string[],
   ftaInfo: { eligible: boolean; agreement: string; savings: string },
   hsCodes: HSCodeSuggestion[],
+  tariffRates: TariffRate[] = [],
 ): string {
   const reportId = `FIN-${Date.now().toString(36).toUpperCase()}`;
   const timestamp = new Date().toISOString().slice(0, 10);
-  const dutyRate = hsCodes[0]?.generalDutyRate || "2.9%";
+  const liveMfn = tariffRates.find((r) => r.mfnRate)?.mfnRate;
+  const livePref = tariffRates.find((r) => r.preferentialRate);
+  const dutyRate = liveMfn || hsCodes[0]?.generalDutyRate || "rate not retrieved";
+  const dutySource = liveMfn ? "World Bank WITS (live MFN)" : hsCodes[0]?.generalDutyRate ? "USITC HTS (US general rate — verify destination rate)" : "not retrieved";
 
   return `# Export Finance Summary
 
@@ -1040,14 +1091,17 @@ ${targetCountries.map((c) => `| ${c} | Established | Documentary Collection (D/P
 
 ## Duty & Tariff Estimates
 
-*Source: [USITC HTS](https://hts.usitc.gov/) for base rates, [USTR.gov](https://ustr.gov/trade-agreements) for FTA rates*
+*Source: ${dutySource}. Preferential rates require rules-of-origin verification — figures below show what's available, not a binding determination.*
 
-| Destination | HS Code | Base Duty | FTA | Effective Rate |
-|-------------|---------|-----------|-----|---------------|
+| Destination | HS Code | MFN Rate | FTA Available | Preferential Rate (if RoO met) |
+|-------------|---------|----------|---------------|--------------------------------|
 ${targetCountries.map((c) => {
     const fta = getFTAInfo(hsCode, c);
-    return `| ${c} | ${hsCode} | ${dutyRate} | ${fta.eligible ? fta.agreement : "None"} | ${fta.eligible ? "0%" : dutyRate} |`;
+    const pref = fta.eligible ? (livePref?.preferentialRate ?? "verify RoO") : "—";
+    return `| ${c} | ${hsCode} | ${dutyRate} | ${fta.eligible ? fta.agreement : "None"} | ${pref} |`;
   }).join("\n")}
+
+> **Note on FTA rates.** "Preferential rate" applies only if your product meets the agreement's rules of origin (typically a regional value content threshold or a tariff-shift rule). Claiming preference without qualifying exposes you to duty reclamation and penalties. Look up the specific RoO for your HS line on [CBP Tools](https://www.cbp.gov/trade/priority-issues/trade-agreements).
 
 ## Available Financing Programs
 
@@ -1062,14 +1116,23 @@ ${targetCountries.map((c) => {
 
 ## Landed Cost Estimate (per $50,000 shipment)
 
-| Component | Amount | Source |
-|-----------|--------|--------|
-| Product Value (FOB) | $50,000 | — |
-| Freight (est.) | $2,500 | Industry average |
-| Insurance (0.5%) | $250 | Standard marine cargo rate |
-| CIF Value | $52,750 | — |
-| Import Duty (${ftaInfo.eligible ? "0% FTA" : dutyRate}) | ${ftaInfo.eligible ? "$0" : "$" + Math.round(52750 * parseFloat(dutyRate) / 100).toLocaleString()} | [USITC HTS](https://hts.usitc.gov/) |
-| **Total Landed Cost** | **$${ftaInfo.eligible ? "52,750" : Math.round(52750 * (1 + parseFloat(dutyRate) / 100)).toLocaleString()}** | — |
+*Two scenarios — use whichever matches your rules-of-origin position.*
+
+${(() => {
+    const mfnPct = parseFloat(dutyRate);
+    const prefPct = livePref?.preferentialRate ? parseFloat(livePref.preferentialRate) : 0;
+    const mfnDuty = Number.isFinite(mfnPct) ? Math.round(52750 * mfnPct / 100) : null;
+    const prefDuty = ftaInfo.eligible && Number.isFinite(prefPct) ? Math.round(52750 * prefPct / 100) : null;
+    let rows = `| Component | Scenario A: MFN | Scenario B: FTA preferential |\n`;
+    rows += `|-----------|-----------------|------------------------------|\n`;
+    rows += `| Product Value (FOB) | $50,000 | $50,000 |\n`;
+    rows += `| Freight (est.) | $2,500 | $2,500 |\n`;
+    rows += `| Insurance (0.5%) | $250 | $250 |\n`;
+    rows += `| CIF Value | $52,750 | $52,750 |\n`;
+    rows += `| Import Duty | ${mfnDuty !== null ? `$${mfnDuty.toLocaleString()} (${dutyRate})` : "rate not retrieved"} | ${ftaInfo.eligible ? (prefDuty !== null ? `$${prefDuty.toLocaleString()} (${livePref?.preferentialRate})` : "RoO-dependent") : "N/A"} |\n`;
+    rows += `| **Total Landed Cost** | ${mfnDuty !== null ? `**$${(52750 + mfnDuty).toLocaleString()}**` : "—"} | ${ftaInfo.eligible && prefDuty !== null ? `**$${(52750 + prefDuty).toLocaleString()}**` : (ftaInfo.eligible ? "verify RoO" : "—")} |`;
+    return rows;
+  })()}
 
 ## Currency Notes
 

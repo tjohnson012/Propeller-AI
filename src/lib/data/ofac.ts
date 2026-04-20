@@ -51,6 +51,10 @@ export interface ScreeningResult {
   matches: SDNMatch[];
   listsChecked: string[];
   timestamp: string;
+  /** "live" = full 25K+ CSL downloaded, "cached" = in-memory from last download, "fallback" = offline sample list only. */
+  dataSource: "live" | "cached" | "fallback";
+  /** How many entries were screened against. Falls to ~10 when dataSource is "fallback". */
+  entriesChecked: number;
 }
 
 export interface SDNMatch {
@@ -134,7 +138,16 @@ function shortSource(raw: string): string {
 
 let cslCache: SDNEntry[] | null = null;
 let cacheTimestamp: number = 0;
+let lastLoadSource: "live" | "cached" | "fallback" = "fallback";
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours (CSL updates daily at 5 AM EST)
+
+export function getCSLLoadStatus(): { source: "live" | "cached" | "fallback"; entries: number; loadedAt: string } {
+  return {
+    source: lastLoadSource,
+    entries: cslCache?.length ?? 0,
+    loadedAt: cacheTimestamp ? new Date(cacheTimestamp).toISOString() : "",
+  };
+}
 
 /* ── String utilities ── */
 
@@ -241,6 +254,7 @@ function parseCSLJSON(data: { results: CSLRawEntry[] }): SDNEntry[] {
 export async function loadSDNList(): Promise<SDNEntry[]> {
   const now = Date.now();
   if (cslCache && now - cacheTimestamp < CACHE_TTL) {
+    lastLoadSource = "cached";
     return cslCache;
   }
 
@@ -252,17 +266,27 @@ export async function loadSDNList(): Promise<SDNEntry[]> {
 
     if (!response.ok) {
       console.error(`CSL fetch failed: ${response.status}`);
-      return cslCache ?? getFallbackEntries();
+      if (cslCache) {
+        lastLoadSource = "cached";
+        return cslCache;
+      }
+      lastLoadSource = "fallback";
+      return getFallbackEntries();
     }
 
     const data = await response.json();
     cslCache = parseCSLJSON(data);
     cacheTimestamp = now;
-    // CSL data loaded successfully
+    lastLoadSource = "live";
     return cslCache;
   } catch (error) {
     console.error("Failed to fetch Consolidated Screening List:", error);
-    return cslCache ?? getFallbackEntries();
+    if (cslCache) {
+      lastLoadSource = "cached";
+      return cslCache;
+    }
+    lastLoadSource = "fallback";
+    return getFallbackEntries();
   }
 }
 
@@ -340,9 +364,6 @@ export async function screenEntity(entityName: string): Promise<ScreeningResult>
   const bestScore = topMatches[0]?.score ?? 0;
   const bestType = topMatches[0]?.matchType ?? "none";
 
-  // Collect which lists had matches for reporting
-  const matchedLists = [...new Set(topMatches.map((m) => m.entry.sourceList))];
-
   return {
     query: entityName,
     matched: bestScore >= 0.6,
@@ -351,6 +372,8 @@ export async function screenEntity(entityName: string): Promise<ScreeningResult>
     matches: topMatches,
     listsChecked: CSL_LISTS_CHECKED,
     timestamp: new Date().toISOString(),
+    dataSource: lastLoadSource,
+    entriesChecked: cslList.length,
   };
 }
 

@@ -31,6 +31,10 @@ export interface TradeFlowSummary {
   totalValue: number;
   timestamp: string;
   source: string;
+  /** True when data came from hardcoded estimates, not the live Comtrade API. */
+  isFallback: boolean;
+  /** When isFallback is true, explains why. */
+  fallbackReason?: string;
 }
 
 export interface TradePartner {
@@ -109,14 +113,13 @@ export async function getTradeFlows(
       if (data.data && data.data.length > 0) {
         return parseComtradeResponse(data.data, hsCode, reporterCountry, direction, year);
       }
+      return getCuratedTradeData(hsCode, reporterCountry, direction, year, "Comtrade returned no records for this HS code");
     }
 
-    // Fall back to curated data
-    // Fallback to curated trade data
-    return getCuratedTradeData(hsCode, reporterCountry, direction, year);
+    return getCuratedTradeData(hsCode, reporterCountry, direction, year, `Comtrade API error ${response.status}`);
   } catch (error) {
     console.error("Comtrade API error:", error);
-    return getCuratedTradeData(hsCode, reporterCountry, direction, year);
+    return getCuratedTradeData(hsCode, reporterCountry, direction, year, `Comtrade request failed: ${error instanceof Error ? error.message : "unknown"}`);
   }
 }
 
@@ -154,6 +157,7 @@ function parseComtradeResponse(
     totalValue,
     timestamp: new Date().toISOString(),
     source: "UN Comtrade",
+    isFallback: false,
   };
 }
 
@@ -165,11 +169,11 @@ function getCuratedTradeData(
   hsCode: string,
   reporter: string,
   direction: "import" | "export",
-  year: number
+  year: number,
+  fallbackReason = "Comtrade API unavailable",
 ): TradeFlowSummary {
   const cleanHS = hsCode.replace(/[.\s]/g, "");
 
-  // HS 8481 - Taps, cocks, valves (the demo product)
   if (cleanHS.startsWith("8481")) {
     if (reporter.toLowerCase() === "germany" || reporter.toLowerCase() === "world") {
       return {
@@ -194,15 +198,16 @@ function getCuratedTradeData(
         ],
         totalValue: 30_800_000_000,
         timestamp: new Date().toISOString(),
-        source: "UN Comtrade (curated 2023 data)",
+        source: "Reference estimate (HS 8481 valves) — not live Comtrade data",
+        isFallback: true,
+        fallbackReason,
       };
     }
   }
 
-  // Default fallback with realistic structure
   return {
     hsCode,
-    hsDescription: `HS ${hsCode} — Trade data`,
+    hsDescription: `HS ${hsCode} — reference estimate`,
     reporter: reporter || "World",
     direction,
     year,
@@ -215,7 +220,9 @@ function getCuratedTradeData(
     ],
     totalValue: 27_800_000_000,
     timestamp: new Date().toISOString(),
-    source: "UN Comtrade (estimated)",
+    source: "Generic reference estimate — not live Comtrade data",
+    isFallback: true,
+    fallbackReason,
   };
 }
 
