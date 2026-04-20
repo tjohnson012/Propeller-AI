@@ -296,8 +296,8 @@ export async function runPipeline(
   let controlsMsg = `**Export Controls & End-Use Assessment**\n\n`;
   controlsMsg += `*Sources: [BIS Export Administration Regulations](https://www.bis.doc.gov/), [BIS Country Chart](https://www.bis.doc.gov/index.php/regulations/commerce-control-list-ccl)*\n\n`;
   controlsMsg += `- **HS Code:** ${primaryHS}\n`;
-  controlsMsg += `- **ECCN:** ${exportControls.eccn}\n`;
-  controlsMsg += `- **License Required:** ${exportControls.licenseRequired ? "Yes" : "No — EAR99 (no license needed)"}\n`;
+  controlsMsg += `- **Likely ECCN:** ${exportControls.eccn} *(rules-based triage, verify with full CCL review)*\n`;
+  controlsMsg += `- **License likely required:** ${exportControls.licenseRequired ? "Yes — consult export counsel" : "No — provisional"}\n`;
   controlsMsg += `- **Destination:** ${primaryCountry}\n`;
   controlsMsg += `- **End-Use Risk Level:** ${endUseAssessment.riskLevel.toUpperCase()}\n`;
   controlsMsg += `- **FTA Eligible:** ${ftaInfo.eligible ? `Yes — ${ftaInfo.agreement}` : "No applicable FTA"}\n`;
@@ -457,18 +457,25 @@ export async function runPipeline(
   emit({ type: "done" });
 }
 
-/* ── Helper: Export Controls Lookup ── */
+/* ── Helper: Export Controls (rules-based heuristic) ──
+ *
+ * This is NOT a live CCL/USML lookup. It's a coarse first-pass classification
+ * based on HS prefix + destination, useful as "should I look harder?" triage.
+ * Actual ECCN assignment requires reviewing the full Commerce Control List
+ * against product specs, end-use, and end-user — which is a human job.
+ */
 function getExportControlInfo(
   hsCode: string,
   destination: string,
 ): { eccn: string; licenseRequired: boolean; notes: string } {
   const clean = hsCode.replace(/[.\s]/g, "");
+  const rulesCaveat = "Rules-based heuristic — not a substitute for full CCL/USML review. Confirm your ECCN with an export-compliance attorney or the BIS SNAP-R advisory opinion process before filing.";
 
   if (clean.startsWith("9305") || clean.startsWith("9301") || clean.startsWith("9306")) {
     return {
-      eccn: "0A501",
+      eccn: "Likely ITAR USML Cat I-IV (or 0A501)",
       licenseRequired: true,
-      notes: "Defense article — may require ITAR license or BIS EAR license depending on specifications. Source: ITAR USML Category I-IV.",
+      notes: `Firearms and related components typically fall under ITAR (22 CFR 121 USML) or BIS 0A501. ${rulesCaveat}`,
     };
   }
 
@@ -476,18 +483,18 @@ function getExportControlInfo(
     const sanctionedCountries = ["iran", "north korea", "syria", "cuba", "russia", "belarus"];
     const isSanctioned = sanctionedCountries.some((c) => destination.toLowerCase().includes(c));
     return {
-      eccn: "EAR99",
+      eccn: "Likely EAR99",
       licenseRequired: isSanctioned,
       notes: isSanctioned
-        ? "Sanctioned destination — license required despite EAR99 classification. Source: 15 CFR Part 746."
-        : "No license required for this product category to this destination. Source: BIS EAR Part 734.",
+        ? `Comprehensive sanctions apply to this destination — a license is likely required even for EAR99 goods (15 CFR Part 746). ${rulesCaveat}`
+        : `General industrial goods in HS 72/73/84 are commonly EAR99 to non-sanctioned destinations (15 CFR Part 734). ${rulesCaveat}`,
     };
   }
 
   return {
-    eccn: "EAR99",
+    eccn: "Likely EAR99",
     licenseRequired: false,
-    notes: "General industrial goods — no specific export controls apply. Source: BIS EAR Part 734.",
+    notes: `Most industrial goods outside specialized categories are EAR99. ${rulesCaveat}`,
   };
 }
 
@@ -1146,6 +1153,9 @@ ${targetCountries.map((c) => `- ${getCurrencyNote(c)}`).join("\n")}
 *Financial data sourced from U.S. government programs. Grant availability and amounts subject to change — verify with your state SBDC or program administrator.*`;
 }
 
+// Rules-based country-risk bucket — not a live credit or political-risk feed.
+// Real assessments should reference OECD country-risk classifications, Ex-Im
+// Country Limitation Schedule, or commercial credit insurers like Atradius.
 function getCountryRisk(country: string): string {
   const c = country.toLowerCase();
   if (c.includes("canada") || c.includes("australia") || c.includes("japan") || c.includes("germany") || c.includes("united kingdom")) return "Low";

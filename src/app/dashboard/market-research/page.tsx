@@ -13,6 +13,7 @@ import {
   Target,
   TrendingUp,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 import { ChatWorkspace } from "@/components/dashboard/ChatWorkspace";
 import { useAppStore } from "@/lib/store";
@@ -191,9 +192,26 @@ export default function MarketResearchPage() {
             <Search className="w-4 h-4 text-agent-market" />
             <h2 className="text-sm font-semibold text-text-primary">Classify your product</h2>
           </div>
-          <p className="text-xs text-text-muted mb-3">
-            Search the USITC Harmonized Tariff Schedule. We match your description against ~17,000 codes.
+          <p className="text-xs text-text-muted mb-2">
+            Match a product description to a 6-digit HS heading — the international category used for market research and trade-flow queries.
           </p>
+          <div className="flex items-start gap-2 px-3 py-2 mb-3 rounded-lg bg-bg-tertiary/40 border border-border-primary">
+            <Info className="w-3.5 h-3.5 text-text-muted mt-0.5 shrink-0" />
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              <strong className="text-text-secondary">Preliminary, not legal.</strong> The codes below are 6-digit
+              headings. US customs filings require the full <strong className="text-text-secondary">10-digit HTSUS</strong>
+              {" "}(6-digit HS + 4 US-specific statistical digits). Pin down your exact code on{" "}
+              <a
+                href="https://hts.usitc.gov/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                hts.usitc.gov
+              </a>
+              {" "}before filing a Shipper&rsquo;s Export Declaration or claiming an FTA preference.
+            </p>
+          </div>
 
           <div className="flex gap-2">
             <input

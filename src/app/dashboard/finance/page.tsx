@@ -155,7 +155,16 @@ export default function FinancePage() {
             <h2 className="text-sm font-semibold text-text-primary">Duty & tariff lookup</h2>
           </div>
           <p className="text-xs text-text-muted mb-3">
-            Looks up the MFN rate from World Bank WITS and any preferential rate from the trade.gov FTA Tariff Rates API.
+            Looks up the MFN rate from World Bank WITS and any preferential rate from the trade.gov FTA Tariff Rates API. Accepts 6-, 8-, or 10-digit codes — rates are keyed off the 6-digit heading, but for actual customs filings use your full{" "}
+            <a
+              href="https://hts.usitc.gov/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:underline"
+            >
+              10-digit HTSUS
+            </a>
+            .
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">

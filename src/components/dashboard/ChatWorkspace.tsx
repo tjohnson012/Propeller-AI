@@ -9,23 +9,15 @@ import { runPipelineStreaming } from "@/lib/pipeline-stream";
 import { cn } from "@/lib/utils";
 import { ChatMessageComponent } from "./ChatMessageComponent";
 import { ChatInput } from "./ChatInput";
-import { Loader2, ArrowRight, Compass, Scale, Receipt, Handshake, Package, Globe, Play } from "lucide-react";
+import { Loader2, ArrowRight, Compass, Scale, Receipt, Handshake, Package, Globe, Play, Search, Check, X, AlertTriangle } from "lucide-react";
 import { CatalogUpload } from "./CatalogUpload";
 import { productSectors } from "@/lib/onboarding-constants";
 import { useOnboardingStore } from "@/lib/onboarding-store";
+import { REGIONS, type Country } from "@/lib/geography";
 
 interface ChatWorkspaceProps {
   agentContext: AgentId | null;
 }
-
-const targetRegions = [
-  { label: "Europe", markets: ["Germany", "UK", "France", "Netherlands"] },
-  { label: "North America", markets: ["Canada", "Mexico"] },
-  { label: "Asia Pacific", markets: ["Japan", "South Korea", "Australia"] },
-  { label: "Latin America", markets: ["Brazil", "Colombia", "Chile"] },
-  { label: "Middle East", markets: ["UAE", "Saudi Arabia"] },
-  { label: "Not sure yet", markets: [] },
-];
 
 /* ── Setup Flow ── */
 function SetupFlow() {
@@ -37,16 +29,16 @@ function SetupFlow() {
   const [customCategory, setCustomCategory] = useState("");
   const [activeSector, setActiveSector] = useState<string | null>(null);
   const [products, setProducts] = useState("");
-  const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
+  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+  const [marketSearch, setMarketSearch] = useState("");
+  const [activeRegion, setActiveRegion] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
 
   const handleComplete = useCallback(async () => {
     if (launching) return;
     setLaunching(true);
 
-    const allMarkets = targetRegions
-      .filter((r) => selectedRegions.includes(r.label))
-      .flatMap((r) => r.markets);
+    const allMarkets = selectedCountries;
 
     const categoryLabel = selectedCategory === "Other" ? customCategory || "Other" : selectedCategory;
     const profile = {
@@ -95,7 +87,7 @@ function SetupFlow() {
     } finally {
       setLaunching(false);
     }
-  }, [companyName, selectedCategory, customCategory, products, selectedRegions, setProductProfile, launching, tourCompleted, startTour]);
+  }, [companyName, selectedCategory, customCategory, products, selectedCountries, setProductProfile, launching, tourCompleted, startTour]);
 
   return (
     <div className="flex-1 flex items-center justify-center p-8">
@@ -302,67 +294,190 @@ function SetupFlow() {
           </div>
         )}
 
-        {/* Step 3: Target markets */}
+        {/* Step 3: Target markets — individual country picker */}
         {step === 3 && (
           <div className="animation-slide-up">
             <h2 className="font-serif text-2xl text-text-primary mb-2">
               Where do you want to sell?
             </h2>
-            <p className="text-sm text-text-secondary mb-8">
-              Select target regions. We&apos;ll check compliance and find buyers there.
+            <p className="text-sm text-text-secondary mb-4">
+              Pick any countries you&apos;re targeting. Search or browse by region — you can always edit this later.
             </p>
-            <div className="grid grid-cols-2 gap-3 mb-8">
-              {targetRegions.map((region) => (
+
+            {/* Search + region tabs */}
+            <div className="space-y-3 mb-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
+                <input
+                  type="text"
+                  value={marketSearch}
+                  onChange={(e) => setMarketSearch(e.target.value)}
+                  placeholder="Search countries..."
+                  className="input-field w-full pl-9 pr-3 py-2.5 text-sm"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
                 <button
-                  key={region.label}
-                  onClick={() => {
-                    setSelectedRegions((prev) =>
-                      prev.includes(region.label)
-                        ? prev.filter((r) => r !== region.label)
-                        : [...prev, region.label],
-                    );
-                  }}
+                  onClick={() => setActiveRegion(null)}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3.5 rounded-lg border transition-colors text-left",
-                    selectedRegions.includes(region.label)
-                      ? "border-accent bg-accent-muted text-text-primary"
-                      : "border-border-primary bg-bg-secondary text-text-secondary hover:border-border-hover hover:text-text-primary",
+                    "px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
+                    activeRegion === null
+                      ? "bg-accent text-white"
+                      : "bg-bg-secondary text-text-muted hover:text-text-secondary",
                   )}
                 >
-                  <Globe className="w-4 h-4 shrink-0" />
-                  <div>
-                    <span className="text-sm">{region.label}</span>
-                    {region.markets.length > 0 && (
-                      <p className="text-[11px] text-text-muted mt-0.5">
-                        {region.markets.join(", ")}
-                      </p>
-                    )}
-                  </div>
+                  All regions
                 </button>
-              ))}
+                {REGIONS.map((region) => (
+                  <button
+                    key={region.name}
+                    onClick={() => setActiveRegion(region.name)}
+                    className={cn(
+                      "px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
+                      activeRegion === region.name
+                        ? "bg-accent text-white"
+                        : "bg-bg-secondary text-text-muted hover:text-text-secondary",
+                    )}
+                  >
+                    {region.name}
+                  </button>
+                ))}
+              </div>
             </div>
-            <button
-              onClick={handleComplete}
-              disabled={launching}
-              className={cn(
-                "flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-medium transition-colors",
-                launching
-                  ? "bg-bg-tertiary text-text-muted"
-                  : "bg-accent text-white hover:bg-accent-hover",
-              )}
-            >
-              {launching ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Launching...
-                </>
-              ) : (
-                <>
-                  Launch my workspace
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
+
+            {/* Selected pills */}
+            {selectedCountries.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-border-primary">
+                {selectedCountries.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setSelectedCountries((prev) => prev.filter((x) => x !== c))}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-accent-muted border border-accent/30 text-xs text-text-primary hover:bg-accent/10 transition-colors"
+                  >
+                    {c}
+                    <X className="w-3 h-3 text-text-muted" />
+                  </button>
+                ))}
+                <button
+                  onClick={() => setSelectedCountries([])}
+                  className="text-xs text-text-muted hover:text-text-secondary transition-colors px-2 py-1"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+
+            {/* Country list */}
+            <div className="max-h-[340px] overflow-y-auto pr-1 space-y-4 mb-5">
+              {REGIONS
+                .filter((r) => !activeRegion || r.name === activeRegion)
+                .map((region) => {
+                  const filtered = marketSearch
+                    ? region.countries.filter((c) =>
+                        c.name.toLowerCase().includes(marketSearch.toLowerCase()),
+                      )
+                    : region.countries;
+                  if (filtered.length === 0) return null;
+
+                  const regionCountryNames = region.countries.map((c) => c.name);
+                  const allSelected = regionCountryNames.every((n) => selectedCountries.includes(n));
+                  const toggleRegion = () => {
+                    setSelectedCountries((prev) => {
+                      if (allSelected) return prev.filter((n) => !regionCountryNames.includes(n));
+                      const next = new Set([...prev, ...regionCountryNames]);
+                      return Array.from(next);
+                    });
+                  };
+
+                  return (
+                    <div key={region.name}>
+                      {!activeRegion && (
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[11px] text-text-muted font-medium uppercase tracking-wider">
+                            {region.name} <span className="text-text-muted/60 normal-case">· {region.description}</span>
+                          </p>
+                          <button
+                            onClick={toggleRegion}
+                            className="text-[11px] text-text-muted hover:text-accent transition-colors"
+                          >
+                            {allSelected ? "Deselect all" : "Select all"}
+                          </button>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {filtered.map((c: Country) => {
+                          const selected = selectedCountries.includes(c.name);
+                          return (
+                            <button
+                              key={c.iso2}
+                              onClick={() =>
+                                setSelectedCountries((prev) =>
+                                  selected ? prev.filter((x) => x !== c.name) : [...prev, c.name],
+                                )
+                              }
+                              className={cn(
+                                "flex items-center justify-between gap-2 px-3 py-2 rounded-md border transition-colors text-left",
+                                selected
+                                  ? "border-accent bg-accent-muted text-text-primary"
+                                  : "border-border-primary bg-bg-secondary text-text-secondary hover:border-border-hover hover:text-text-primary",
+                              )}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm truncate">{c.name}</span>
+                                  {c.fta && (
+                                    <span className="text-[9px] font-mono text-accent/80 uppercase tracking-wider shrink-0">
+                                      FTA
+                                    </span>
+                                  )}
+                                  {c.sanctionsRisk && (
+                                    <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                                  )}
+                                </div>
+                                {c.ftaLabel && selected && (
+                                  <p className="text-[10px] text-text-muted truncate">{c.ftaLabel}</p>
+                                )}
+                              </div>
+                              {selected && <Check className="w-3.5 h-3.5 text-accent shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleComplete}
+                disabled={launching}
+                className={cn(
+                  "flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-medium transition-colors",
+                  launching
+                    ? "bg-bg-tertiary text-text-muted"
+                    : "bg-accent text-white hover:bg-accent-hover",
+                )}
+              >
+                {launching ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Launching...
+                  </>
+                ) : (
+                  <>
+                    Launch my workspace
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+              <span className="text-xs text-text-muted">
+                {selectedCountries.length > 0
+                  ? `${selectedCountries.length} ${selectedCountries.length === 1 ? "country" : "countries"} selected`
+                  : "Skip to launch with no markets selected"}
+              </span>
+            </div>
           </div>
         )}
       </div>
